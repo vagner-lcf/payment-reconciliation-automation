@@ -1,0 +1,42 @@
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.parse
+
+
+class CallbackHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self) -> None:
+        parsed_url = urllib.parse.urlparse(self.path)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+
+        code = query_params.get("code")
+
+        if parsed_url.path == "/callback" and code:
+            self.server.authorization_code = code[0]
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+            message = "Autorização bem-sucedida! Você pode fechar esta janela."
+            self.wfile.write(message.encode("utf-8"))
+        else:
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+            message = "Erro: Código de autorização não encontrado."
+            self.wfile.write(message.encode("utf-8"))
+
+
+def wait_for_authorization_code() -> str | None:
+    server = HTTPServer(("localhost", 8000), CallbackHandler)
+    server.authorization_code = None
+
+    print("Aguardando callback...")
+    server.handle_request()
+
+    return server.authorization_code
+
+
+if __name__ == "__main__":
+    authorization_code = wait_for_authorization_code()
+    print("Código capturado:", authorization_code is not None)
