@@ -24,15 +24,3 @@ def extract_text_from_image(file_path: str) -> str:
     text = response.full_text_annotation.text
 
     return text
-
-
-if __name__ == "__main__":
-    file_path_1 = "data/input/pix_image_fazenda.jpeg"
-    file_path_2 = "data/input/pix_image_escolinha.jpeg"
-    file_path_3 = "data/input/pix_image_cpf.jpeg"
-    file_path_4 = "data/input/pix_image_cereais.jpeg"
-    file_path_5 = "data/input/pix_image_uziel.jpeg"
-    file_path_6 = "data/input/testes.jpeg"
-
-    text = extract_text_from_image(file_path_6)
-    print(text)

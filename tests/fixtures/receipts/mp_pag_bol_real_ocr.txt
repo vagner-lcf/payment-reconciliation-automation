@@ -1,0 +1,35 @@
+mercado
+pago
+Comprovante de pagamento
+Segunda-feira, 5 de outubro de 2026, 22:54.
+R$ 62595
+EMPRESA FORNECEDORA EXEMPLO
+PECAS PARA VEICULO
+N.° de operação de Mercado Pago
+123456789012
+Beneficiário
+EMPRESA FORNECEDORA EXEMPLO
+PECAS PARA VEICULO
+CPF/CNPJ do beneficiário
+12345678000195
+Titular do boleto
+EMPRESA PAGADORA TESTE
+CPF/CNPJ do titular do boleto
+98765432000198
+Banco
+Banco Cooperativo do Brasil S/A - Bancoob
+Vencimento
+05/out/2026
+Código de barras
+00190159000000625950000000000000000
+000000000
+Nsu
+00000000-0000-4000-8000-000000000001
+Pessoa que pagou
+EMPRESA PAGADORA TESTE
+Meio de pagamento
+Saldo em conta
+Pago via aplicativo! Recebido por correspondente
+bancário digital e processado por Itaú Unibanco S.A.
+O pagamento pode levar até 2 dias úteis para ser
+compensado após o boleto ter sido pago.

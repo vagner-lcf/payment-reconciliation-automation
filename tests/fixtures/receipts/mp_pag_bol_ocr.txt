@@ -1,0 +1,35 @@
+﻿mercado pago
+COMPROVANTE FICTÍCIO • TESTE OCR
+Comprovante de pagamento
+Pagamento aprovado
+R$ 625⁹⁵ 
+13 de outubro de 2026, 14:32
+────────────────────────────────
+Detalhes do pagamento
+Valor pago
+R$ 625⁹⁵ 
+Meio de pagamento
+Boleto
+Código de barras
+00195000000000625951234567890123456789012345
+────────────────────────────────
+Dados do beneficiário
+Nome
+EMPRESA EXEMPLO LTDA
+CNPJ
+00.000.000/0000-00
+────────────────────────────────
+Dados do pagador
+Nome
+PAGADOR DE TESTE
+CPF
+000.000.000-00
+────────────────────────────────
+Identificação da operação
+ID da operação
+TESTE-MP-000001
+Instituição
+Mercado Pago
+────────────────────────────────
+DOCUMENTO SINTÉTICO — SEM VALOR FINANCEIRO
+Dados fictícios. Código de barras sintético com DV calculado, não emitido por banco. Não usar para pagamentos.

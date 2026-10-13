@@ -28,13 +28,13 @@ from src.tratoray_transactions_db import (
     mark_transaction_as_processed,
 )
 
-from src.pdf_receipt_parser import (
-    extract_text_from_pdf,
+from src.receipt_parser import (
     extract_receipt_data,
 )
 
 from src.receipt_hash_extractor import extract_receipt_hash
 
+from src.pdf_text_extractor import extract_text_from_pdf
 
 def is_account_settled(account: dict) -> bool:
     balance = account.get("saldo")
