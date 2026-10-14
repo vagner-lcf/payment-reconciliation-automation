@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 
 from src.auth import (
     build_authorization_url,
@@ -35,6 +36,8 @@ from src.receipt_parser import (
 from src.receipt_hash_extractor import extract_receipt_hash
 
 from src.pdf_text_extractor import extract_text_from_pdf
+from src.image_text_extractor import extract_text_from_image
+
 
 def is_account_settled(account: dict) -> bool:
     balance = account.get("saldo")
@@ -88,32 +91,36 @@ def reconcile_existing_transaction(
             return "unexpected_status"
 
 
-def main(write_enabled: bool = False):
+def main(file_path: str, settlement_enabled: bool = False):
     # ---------------------------------------------------------
     # PREPARAÇÃO DO BANCO LOCAL
     # ---------------------------------------------------------
     create_tables(engine)
 
     # ---------------------------------------------------------
-    # EXTRAÇÃO DE DADOS DO COMPROVANTE
+    # EXTRAÇÃO DE TEXTO POR TIPO DE ARQUIVO
     # ---------------------------------------------------------
-    file_path_boleto = (
-        "data/input/boleto.pdf"
-    )
-    file_path_test_1 = (
-        "data/input/teste1.pdf"
-    )
-    file_path_test_2 = (
-        "data/input/teste2.pdf"
-    )
-    file_path_test_3 = (
-        "data/input/teste3.pdf"
+
+    file_extension = Path(file_path).suffix.lower()
+
+    if file_extension == ".pdf":
+        source_type = "pdf"
+        text = extract_text_from_pdf(file_path)
+
+    elif file_extension in (".png", ".jpg", ".jpeg"):
+        source_type = "image"
+        text = extract_text_from_image(file_path)
+
+    else:
+        raise ValueError(
+            f"Formato de comprovante não suportado: {file_extension}"
+        )
+
+    receipt_data = extract_receipt_data(
+        text,
+        source_type=source_type,
     )
 
-    file_path = file_path_test_1
-
-    text = extract_text_from_pdf(file_path)
-    receipt_data = extract_receipt_data(text)
     file_hash = extract_receipt_hash(file_path)
 
     payment = receipt_data | {
@@ -140,6 +147,15 @@ def main(write_enabled: bool = False):
     # ESTADOS QUE PODEM SER RESOLVIDOS LOCALMENTE
     # ---------------------------------------------------------
     if existing_transaction is not None:
+
+        if existing_transaction.get("identity_conflict", False):
+            print(
+                "Conflito entre identificadores financeiros. "
+                "Operação bloqueada para revisão manual. "
+                "Nenhuma consulta ou baixa será realizada no Tiny."
+            )
+            return
+
         existing_status = existing_transaction["status"]
 
         if existing_status == "processed":
@@ -156,39 +172,59 @@ def main(write_enabled: bool = False):
     # ---------------------------------------------------------
     # ELEGIBILIDADE PARA PROCESSAMENTO AUTOMÁTICO
     # ---------------------------------------------------------
-    # Sem documento completo do beneficiário, não existe informação
-    # suficiente para aplicar o matching determinístico atual.
-    if (
-        existing_transaction is None
-        and payment["beneficiary_document"] is None
-    ):
-        transaction_data = {
-            "file_hash": payment["file_hash"],
-            "provider": payment["provider"],
-            "provider_transaction_id": payment[
-                "provider_transaction_id"
-            ],
-            "pix_transaction_id": payment["pix_transaction_id"],
-            "amount": (
-                int(payment["amount"] * 100)
-                if payment["amount"] is not None
-                else None
-            ),
-            "status": "review_required",
-        }
 
-        with engine.begin() as db_connection:
-            transaction_id = insert_new_transaction(
-                transaction_data=transaction_data,
-                db_connection=db_connection,
+    # Avaliação apenas de transações novas.
+    # Transações existentes seguem as regras de idempotência
+    # e reconciliação já implementadas.
+
+    if existing_transaction is None:
+
+        image_ineligible = (
+            source_type == "image"
+            and (
+                payment["receipt_layout"] not in (
+                    "mp_pag_bol",
+                    "mp_pix_bol",
+                )
+                or payment["amount_matches_barcode"] is not True
             )
-
-        print(
-            "Documento do beneficiário indisponível. "
-            "Transação registrada para revisão manual. "
-            f"ID local: {transaction_id}"
         )
-        return
+
+        missing_required_data = (
+            payment["beneficiary_document"] is None
+            or payment["amount"] is None
+            or payment["payment_date"] is None
+        )
+
+        if image_ineligible or missing_required_data:
+
+            transaction_data = {
+                "file_hash": payment["file_hash"],
+                "provider": payment["provider"],
+                "provider_transaction_id": payment[
+                    "provider_transaction_id"
+                ],
+                "pix_transaction_id": payment["pix_transaction_id"],
+                "amount": (
+                    int(payment["amount"] * 100)
+                    if payment["amount"] is not None
+                    else None
+                ),
+                "status": "review_required",
+            }
+
+            with engine.begin() as db_connection:
+                transaction_id = insert_new_transaction(
+                    transaction_data=transaction_data,
+                    db_connection=db_connection,
+                )
+
+            print(
+                "Comprovante não elegível para baixa automática. "
+                "Transação registrada para revisão manual. "
+                f"ID local: {transaction_id}"
+            )
+            return
 
     # ---------------------------------------------------------
     # GERAÇÃO DE TOKEN DE ACESSO E AUTENTICAÇÃO
@@ -340,22 +376,10 @@ def main(write_enabled: bool = False):
     # ---------------------------------------------------------
     # BARREIRA DE ESCRITA
     # ---------------------------------------------------------
-    if not write_enabled:
+    if not settlement_enabled:
         print(
             "Modo somente leitura: nenhuma alteração será realizada "
             "no banco local ou no Tiny."
-        )
-        return
-
-    # ---------------------------------------------------------
-    # TRAVA TEMPORÁRIA PARA TESTE CONTROLADO
-    # ---------------------------------------------------------
-    allowed_account_id = 123
-
-    if id_tiny != allowed_account_id:
-        print(
-            "Escrita bloqueada: a conta localizada não é "
-            "a conta autorizada para este teste."
         )
         return
 
@@ -440,6 +464,9 @@ def main(write_enabled: bool = False):
     )
 
 if __name__ == "__main__":
-    main()
+    main(
+        file_path="data/input/pix_bol_1.jpeg",
+        settlement_enabled=False,
+    )
 
 

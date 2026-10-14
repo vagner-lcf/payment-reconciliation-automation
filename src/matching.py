@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+import re
 
 
 def calculate_due_date_window(payment_date: date, range_days: int = 15) -> tuple[str, str]:
@@ -12,15 +13,23 @@ def find_matching_accounts(
         accounts_payable_data: dict,
         beneficiary_document: str,
         payment_amount: Decimal) -> list[dict]:
-    
+
     matching_accounts = []
+
+    normalized_beneficiary_document = re.sub(r"\D", "", beneficiary_document)
 
     for account in accounts_payable_data.get("itens", []):
         account_beneficiary_document = account.get("cliente", {}).get("cpfCnpj", "")
         account_payment_amount = Decimal(str(account.get("saldo", "0")))
 
-        if account_beneficiary_document and account_beneficiary_document == beneficiary_document and account_payment_amount == payment_amount:
-                matching_accounts.append(account)       
+        normalized_account_document = re.sub(r"\D", "", account_beneficiary_document)
+
+        if (
+            normalized_beneficiary_document
+            and normalized_account_document == normalized_beneficiary_document
+            and account_payment_amount == payment_amount
+        ):
+            matching_accounts.append(account)
 
     return matching_accounts
 

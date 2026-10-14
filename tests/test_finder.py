@@ -239,3 +239,23 @@ def test_different_supplier_names_do_not_prevent_document_match():
 
     assert len(matching_accounts) == 1
     assert matching_accounts[0]["id"] == 300001
+
+def test_find_matching_accounts_with_formatted_cnpj():
+    accounts_payable_data = {
+        "itens": [
+            {
+                "id": 123,
+                "cliente": {"cpfCnpj": "21.035.489/0001-07"},
+                "saldo": "625.95",
+            }
+        ]
+    }
+
+    result = find_matching_accounts(
+        accounts_payable_data=accounts_payable_data,
+        beneficiary_document="21035489000107",
+        payment_amount=Decimal("625.95"),
+    )
+
+    assert len(result) == 1
+    assert result[0]["id"] == 123

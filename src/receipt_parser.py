@@ -1,4 +1,3 @@
-from src.image_text_extractor import extract_text_from_image
 from decimal import Decimal
 from datetime import date, datetime
 import re
@@ -149,7 +148,6 @@ def identify_receipt_layout(text: str) -> str:
             return "mp_pix_tra"
 
     return "unknown"
-
 
 
 def extract_barcode(text: str) -> str | None:
@@ -442,56 +440,6 @@ def extract_boleto_transaction_id(text: str, payment_type: str) -> str | None:
         return match.group(1) if match else None
 
     return None
-
-
-
-# if __name__ == "__main__":
-    file_path_pag_bol_1 = "data/input/pag_bol_1.jpeg"
-    file_path_pag_bol_2 = "data/input/pag_bol_2.jpeg"
-    file_path_pag_bol_3 = "data/input/pag_bol_3.jpeg"
-    file_path_pag_bol_4 = "data/input/pag_bol_4.jpeg"
-    file_path_pag_bol_5 = "data/input/pag_bol_5.jpeg"
-
-    file_path_pix_bol_1 = "data/input/pix_bol_1.jpeg"
-    file_path_pix_bol_2 = "data/input/pix_bol_2.jpeg"
-    file_path_pix_bol_3 = "data/input/pix_bol_3.jpeg"
-
-    file_path_pix_tra_1 = "data/input/pix_tra_1.jpeg"
-    file_path_pix_tra_2 = "data/input/pix_tra_2.jpeg"
-    file_path_pix_tra_3 = "data/input/pix_tra_3.jpeg"
-    file_path_pix_tra_4 = "data/input/pix_tra_4.jpeg"
-    file_path_pix_tra_5 = "data/input/pix_tra_5.jpeg"
-
-
-    text = extract_text_from_image(file_path_pag_bol_1)
-
-    provider = identify_provider(text)
-    print(provider)
-
-    payment_type = identify_payment_type(text)
-    print("Payment type: ", payment_type)
-
-    receipt_layout = identify_receipt_layout(text)
-    print("Layout: ", receipt_layout)
-
-    barcode = extract_barcode(text)
-    barcode_amount = extract_barcode_amount(barcode)
-    print(barcode_amount)
-
-    amount = extract_amount(text, payment_type)
-
-    print(amount)
-
-    amount_check = barcode_amount == amount
-
-    print(amount_check)
-
-    beneficiary_doc = extract_ocr_beneficiary_document(text, receipt_layout)
-    print("Beneficiary: ", beneficiary_doc)
-
-
-    payment_date = extract_payment_date(text, payment_type)
-    print("Date: ", payment_date)
 
 def extract_ocr_mp_operation_id(text: str) -> str | None:
     match = re.search(

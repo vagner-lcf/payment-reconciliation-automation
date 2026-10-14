@@ -62,60 +62,120 @@ def find_existing_transaction(
     db_connection: Connection
 ) -> dict | None:
 
+    # ---------------------------------------------------------
+    # 1. HASH DO ARQUIVO — PRIMEIRA BARREIRA
+    # ---------------------------------------------------------
+
     file_hash = transaction_data.get("file_hash")
 
-    file_hash_stmt = (
-        select(tb_tratoray_transactions)
-        .where(tb_tratoray_transactions.c.file_hash == file_hash)
+    if file_hash:
+        file_hash_stmt = (
+            select(tb_tratoray_transactions)
+            .where(tb_tratoray_transactions.c.file_hash == file_hash)
+        )
+
+        file_hash_row = db_connection.execute(
+            file_hash_stmt
+        ).mappings().first()
+
+        if file_hash_row is not None:
+            return dict(file_hash_row)
+
+    # ---------------------------------------------------------
+    # 2. IDENTIFICADORES FINANCEIROS
+    # ---------------------------------------------------------
+
+    pix_transaction_id = transaction_data.get(
+        "pix_transaction_id"
     )
-    file_hash_result = db_connection.execute(file_hash_stmt)
-    file_hash_row = file_hash_result.fetchone()
 
-    if file_hash_row is not None:
-        return dict(file_hash_row._mapping)
+    provider = transaction_data.get("provider")
 
-    if transaction_data.get("pix_transaction_id"):
-        pix_transaction_id = transaction_data.get("pix_transaction_id")
+    provider_transaction_id = transaction_data.get(
+        "provider_transaction_id"
+    )
 
-        pix_transaction_stmt = (
+    pix_row = None
+    provider_row = None
+
+    # Busca pelo ID Pix
+    if pix_transaction_id:
+        pix_stmt = (
             select(tb_tratoray_transactions)
             .where(
                 tb_tratoray_transactions.c.pix_transaction_id
                 == pix_transaction_id
             )
         )
-        pix_transaction_result = db_connection.execute(pix_transaction_stmt)
-        pix_transaction_row = pix_transaction_result.fetchone()
 
-        if pix_transaction_row is not None:
-            return dict(pix_transaction_row._mapping)
+        pix_row = db_connection.execute(
+            pix_stmt
+        ).mappings().first()
 
-    elif (
-        transaction_data.get("provider")
-        and transaction_data.get("provider_transaction_id")
-    ):
-        provider = transaction_data.get("provider")
-        provider_transaction_id = transaction_data.get(
-            "provider_transaction_id"
-        )
-
-        provider_transaction_stmt = (
+    # Busca pelo ID do provedor, independentemente do Pix
+    if provider and provider_transaction_id:
+        provider_stmt = (
             select(tb_tratoray_transactions)
-            .where(tb_tratoray_transactions.c.provider == provider)
+            .where(
+                tb_tratoray_transactions.c.provider == provider
+            )
             .where(
                 tb_tratoray_transactions.c.provider_transaction_id
                 == provider_transaction_id
             )
         )
-        provider_transaction_result = db_connection.execute(
-            provider_transaction_stmt
-        )
-        provider_transaction_row = provider_transaction_result.fetchone()
 
-        if provider_transaction_row is not None:
-            return dict(provider_transaction_row._mapping)
+        provider_row = db_connection.execute(
+            provider_stmt
+        ).mappings().first()
 
-    return None
+    # Nenhum identificador encontrado
+    if pix_row is None and provider_row is None:
+        return None
+
+    # ---------------------------------------------------------
+    # 3. IDENTIFICAÇÃO DE CONFLITOS
+    # ---------------------------------------------------------
+
+    existing = dict(
+        pix_row if pix_row is not None else provider_row
+    )
+
+    identity_conflict = False
+
+    # Caso A:
+    # Pix e ID do provedor apontam para registros diferentes.
+    if pix_row is not None and provider_row is not None:
+        if pix_row["id"] != provider_row["id"]:
+            identity_conflict = True
+
+    # Caso B:
+    # ID Pix informado diverge do ID Pix armazenado.
+    if (
+        pix_transaction_id
+        and existing["pix_transaction_id"]
+    ):
+        if pix_transaction_id != existing["pix_transaction_id"]:
+            identity_conflict = True
+
+    # Caso C:
+    # Identidade do provedor informada diverge da armazenada.
+    if provider and provider_transaction_id:
+        if (
+            existing["provider"]
+            and existing["provider_transaction_id"]
+        ):
+            if (
+                provider != existing["provider"]
+                or provider_transaction_id
+                != existing["provider_transaction_id"]
+            ):
+                identity_conflict = True
+
+    # Campo calculado, não persistido no SQLite
+    existing["identity_conflict"] = identity_conflict
+
+    return existing
 
 def insert_new_transaction(
     transaction_data: dict,
@@ -136,11 +196,12 @@ def mark_transaction_as_processed(
     update_stmt = (
         update(tb_tratoray_transactions)
         .where(tb_tratoray_transactions.c.id == transaction_id)
+        .where(tb_tratoray_transactions.c.status == "processing")
         .values(status="processed")
     )
-    
+
     result = db_connection.execute(update_stmt)
-    
+
     return result.rowcount == 1
 
 
