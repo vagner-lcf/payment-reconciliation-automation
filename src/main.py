@@ -27,6 +27,7 @@ from src.tratoray_transactions_db import (
     engine,
     create_tables,
     find_existing_transaction,
+    find_pending_transaction_by_tiny_id,
     insert_new_transaction,
     mark_transaction_as_processed,
 )
@@ -448,6 +449,27 @@ def main(file_path: str, settlement_enabled: bool = False):
     # ---------------------------------------------------------
     matched_account = matching_accounts[0]
     id_tiny = matched_account["id"]
+
+    # Prevent a second settlement while a previous attempt
+    # for the same Tiny account remains inconclusive.
+    with engine.begin() as db_connection:
+        pending_transaction = find_pending_transaction_by_tiny_id(
+            id_tiny=id_tiny,
+            db_connection=db_connection,
+        )
+
+    if pending_transaction is not None:
+        return finish(
+            status="review_required",
+            message=(
+                "Esta conta possui uma baixa anterior "
+                "ainda não confirmada. "
+                "Nenhuma nova baixa será realizada. "
+                "É necessária conferência manual."
+            ),
+            id_tiny=id_tiny,
+            reason="account_has_pending_transaction",
+        )
 
     print("Conta correspondente localizada:")
     print(accounts_data)

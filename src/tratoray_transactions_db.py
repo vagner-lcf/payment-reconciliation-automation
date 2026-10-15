@@ -204,4 +204,18 @@ def mark_transaction_as_processed(
 
     return result.rowcount == 1
 
+def find_pending_transaction_by_tiny_id(
+    id_tiny: int,
+    db_connection: Connection,
+) -> dict | None:
+    """Find an inconclusive settlement linked to a Tiny account."""
+    stmt = (
+        select(tb_tratoray_transactions)
+        .where(tb_tratoray_transactions.c.id_tiny == id_tiny)
+        .where(tb_tratoray_transactions.c.status == "processing")
+    )
+
+    row = db_connection.execute(stmt).mappings().first()
+
+    return dict(row) if row is not None else None
 

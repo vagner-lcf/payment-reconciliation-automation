@@ -398,6 +398,10 @@ def test_main_eligible_image_reaches_matching_without_settlement():
 
         patch("src.main.insert_new_transaction") as mock_insert,
         patch("src.main.settle_account_payable") as mock_settle,
+        patch(
+            "src.main.find_pending_transaction_by_tiny_id",
+            return_value=None,
+        ),
     ):
         result = main(
             file_path="data/input/comprovante_teste.jpeg",
@@ -574,6 +578,10 @@ def test_main_returns_processed_after_confirmed_settlement():
             "src.main.mark_transaction_as_processed",
             return_value=True,
         ) as mock_mark_processed,
+        patch(
+            "src.main.find_pending_transaction_by_tiny_id",
+            return_value=None,
+        ),
     ):
         result = main(
             file_path="comprovante_teste.jpeg",
@@ -636,6 +644,10 @@ def test_main_returns_verification_pending_when_settlement_fails():
         patch("src.main.settle_account_payable", return_value=False) as mock_settle,
         patch("src.main.get_account_payable_by_id") as mock_get_account,
         patch("src.main.mark_transaction_as_processed") as mock_mark_processed,
+        patch(
+            "src.main.find_pending_transaction_by_tiny_id",
+            return_value=None,
+        ),
     ):
         result = main(
             file_path="comprovante_teste.jpeg",
