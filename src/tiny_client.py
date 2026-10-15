@@ -42,6 +42,64 @@ def get_accounts_payable(
 
     return accounts_payable_data
 
+def get_all_accounts_payable(
+    access_token: str,
+    status: str | None = None,
+    initial_due_date: str | None = None,
+    final_due_date: str | None = None,
+    limit: int = 100,
+) -> dict | None:
+    """Busca todas as páginas de contas a pagar do Tiny."""
+
+    if limit <= 0:
+        raise ValueError("limit deve ser maior que zero")
+
+    all_accounts = []
+    offset = 0
+
+    while True:
+        response = get_accounts_payable(
+            access_token=access_token,
+            status=status,
+            initial_due_date=initial_due_date,
+            final_due_date=final_due_date,
+            limit=limit,
+            offset=offset,
+        )
+
+        if not isinstance(response, dict):
+            return None
+
+        items = response.get("itens")
+        pagination = response.get("paginacao")
+
+        if not isinstance(items, list):
+            return None
+
+        if not isinstance(pagination, dict):
+            return None
+
+        total = pagination.get("total")
+
+        if type(total) is not int or total < 0:
+            return None
+
+        if len(items) > limit:
+            return None
+
+        all_accounts.extend(items)
+
+        if len(all_accounts) >= total:
+            if len(all_accounts) != total:
+                return None
+
+            return {"itens": all_accounts}
+
+        if not items:
+            return None
+
+        offset += len(items)
+
 def get_account_payable_by_id(
         access_token,
         id_account: int) -> list[dict] | None:

@@ -1,4 +1,5 @@
 from src.main import main, reconcile_existing_transaction
+from src import main as main_module
 from unittest.mock import MagicMock, patch
 from decimal import Decimal
 from datetime import date
@@ -203,19 +204,21 @@ def test_main_blocks_identity_conflict_before_tiny(status):
             return_value=existing_transaction,
         ),
         patch("src.main.build_authorization_url") as mock_oauth,
-        patch("src.main.get_accounts_payable") as mock_get_accounts,
+        patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
         patch("src.main.reconcile_existing_transaction") as mock_reconcile,
     ):
-        main(
+        result = main(
             file_path="data/input/comprovante_teste.pdf",
-            settlement_enabled=False
+            settlement_enabled=False,
         )
 
     mock_oauth.assert_not_called()
     mock_get_accounts.assert_not_called()
     mock_settle.assert_not_called()
     mock_reconcile.assert_not_called()
+    assert result["status"] == "review_required"
+    assert result["reason"] == "identity_conflict"
 
 
 @pytest.mark.parametrize(
@@ -252,14 +255,14 @@ def test_main_blocks_ineligible_images_before_tiny(
         patch("src.main.extract_receipt_hash", return_value="hash_imagem"),
         patch("src.main.find_existing_transaction", return_value=None),
         patch("src.main.build_authorization_url") as mock_oauth,
-        patch("src.main.get_accounts_payable") as mock_get_accounts,
+        patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
         patch(
             "src.main.insert_new_transaction",
             return_value=42,
         ) as mock_insert,
     ):
-        main(
+        result = main(
             file_path="data/input/comprovante_teste.jpeg",
             settlement_enabled=False
         )
@@ -273,7 +276,8 @@ def test_main_blocks_ineligible_images_before_tiny(
 
     assert transaction_data["status"] == "review_required"
     assert transaction_data["file_hash"] == "hash_imagem"
-
+    assert result["status"] == "review_required"
+    assert result["transaction_id"] == 42
 
 @pytest.mark.parametrize(
     "missing_field",
@@ -309,7 +313,7 @@ def test_main_blocks_missing_required_data_before_tiny(missing_field):
             return_value=42,
         ) as mock_insert,
         patch("src.main.build_authorization_url") as mock_oauth,
-        patch("src.main.get_accounts_payable") as mock_get_accounts,
+        patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
     ):
         main(
@@ -373,7 +377,7 @@ def test_main_eligible_image_reaches_matching_without_settlement():
         ),
 
         patch(
-            "src.main.get_accounts_payable",
+            "src.main.get_all_accounts_payable",
             return_value=[{"id": 123}],
         ) as mock_get_accounts,
 
@@ -395,7 +399,7 @@ def test_main_eligible_image_reaches_matching_without_settlement():
         patch("src.main.insert_new_transaction") as mock_insert,
         patch("src.main.settle_account_payable") as mock_settle,
     ):
-        main(
+        result = main(
             file_path="data/input/comprovante_teste.jpeg",
             settlement_enabled=False,
         )
@@ -414,9 +418,238 @@ def test_main_eligible_image_reaches_matching_without_settlement():
         Decimal("150.00"),
     )
 
+    assert result["status"] == "dry_run"
+    assert result["id_tiny"] == 123
+    assert result["beneficiary_document"] == "12345678901"
+    assert result["amount"] == Decimal("150.00")
+    assert result["payment_date"] == date(2026, 10, 14)
+
     # Modo sem autorização de baixa:
     # nenhuma transação processing deve ser inserida.
     mock_insert.assert_not_called()
 
     # Nenhuma baixa financeira deve ocorrer.
     mock_settle.assert_not_called()
+
+
+def test_unknown_provider_requires_manual_review(monkeypatch):
+    payment = {
+        "provider": "unknown",
+        "payment_type": "boleto",
+        "receipt_layout": "unknown",
+        "amount": Decimal("7772.22"),
+        "payment_date": date(2026, 10, 9),
+        "beneficiary_document": "11222333000181",
+        "provider_transaction_id": None,
+        "pix_transaction_id": None,
+        "barcode": None,
+        "barcode_amount": None,
+        "amount_matches_barcode": None,
+    }
+
+    monkeypatch.setattr(
+        main_module,
+        "extract_text_from_pdf",
+        lambda file_path: "PDF Itaú simulado",
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "extract_receipt_data",
+        lambda text, source_type: payment,
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "extract_receipt_hash",
+        lambda file_path: "hash_teste_provider_unknown",
+    )
+
+    # Impede que o teste utilize o banco de dados real.
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    test_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    monkeypatch.setattr(main_module, "engine", test_engine)
+
+    # Se tentar consultar ou alterar o Tiny, o teste falha.
+    def unexpected_tiny_call(*args, **kwargs):
+        raise AssertionError(
+            "Comprovante de banco não autorizado chegou ao Tiny."
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "build_authorization_url",
+        unexpected_tiny_call,
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_all_accounts_payable",
+        unexpected_tiny_call,
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "settle_account_payable",
+        unexpected_tiny_call,
+    )
+
+    result = main_module.main(
+        file_path="itau_teste.pdf",
+        settlement_enabled=True,
+    )
+
+    assert result["status"] == "review_required"
+    assert result["beneficiary_document"] == "11222333000181"
+    assert result["payment_date"] == date(2026, 10, 9)
+    assert result["amount"] == Decimal("7772.22")
+    assert result["transaction_id"] is not None
+
+    from sqlalchemy import inspect, text
+
+    table_names = inspect(test_engine).get_table_names()
+
+    assert len(table_names) == 1, (
+        f"Esperava uma tabela de transações, encontrei: {table_names}"
+    )
+
+    with test_engine.connect() as connection:
+        status = connection.execute(
+            text(f'SELECT status FROM "{table_names[0]}"')
+        ).scalar_one()
+
+    assert status == "review_required"
+
+
+def test_main_returns_processed_after_confirmed_settlement():
+    receipt_data = {
+        "provider": "mercado_pago",
+        "provider_transaction_id": "TX_SUCCESS",
+        "pix_transaction_id": None,
+        "receipt_layout": "mp_pag_bol",
+        "amount_matches_barcode": True,
+        "beneficiary_document": "12345678901",
+        "amount": Decimal("150.00"),
+        "payment_date": date(2026, 10, 14),
+    }
+
+    with (
+        patch("src.main.engine"),
+        patch("src.main.create_tables"),
+        patch("src.main.extract_text_from_image", return_value="texto OCR"),
+        patch("src.main.extract_receipt_data", return_value=receipt_data),
+        patch("src.main.extract_receipt_hash", return_value="hash_success"),
+        patch("src.main.find_existing_transaction", return_value=None),
+        patch("src.main.build_authorization_url", return_value="url_teste"),
+        patch("src.main.wait_for_authorization_code", return_value="codigo_teste"),
+        patch(
+            "src.main.exchange_code_for_token",
+            return_value={"access_token": "token_teste"},
+        ),
+        patch(
+            "src.main.calculate_due_date_window",
+            return_value=("2026-09-29", "2026-10-29"),
+        ),
+        patch("src.main.get_all_accounts_payable", return_value=[{"id": 123}]),
+        patch(
+            "src.main.find_matching_accounts",
+            return_value=[{"id": 123}],
+        ),
+        patch("src.main.classify_matching_result", return_value="unique"),
+        patch("src.main.summarize_accounts", return_value="Conta de teste"),
+        patch("src.main.insert_new_transaction", return_value=42) as mock_insert,
+        patch("src.main.settle_account_payable", return_value=True) as mock_settle,
+        patch(
+            "src.main.get_account_payable_by_id",
+            return_value={"situacao": "pago", "saldo": 0},
+        ) as mock_get_account,
+        patch(
+            "src.main.mark_transaction_as_processed",
+            return_value=True,
+        ) as mock_mark_processed,
+    ):
+        result = main(
+            file_path="comprovante_teste.jpeg",
+            settlement_enabled=True,
+        )
+
+    assert result["status"] == "processed"
+    assert result["reason"] is None
+    assert result["transaction_id"] == 42
+    assert result["id_tiny"] == 123
+    assert result["beneficiary_document"] == "12345678901"
+    assert result["amount"] == Decimal("150.00")
+    assert result["payment_date"] == date(2026, 10, 14)
+
+    transaction_data = mock_insert.call_args.kwargs["transaction_data"]
+    assert transaction_data["status"] == "processing"
+
+    mock_settle.assert_called_once()
+    mock_get_account.assert_called_once()
+    mock_mark_processed.assert_called_once()
+
+
+def test_main_returns_verification_pending_when_settlement_fails():
+    receipt_data = {
+        "provider": "mercado_pago",
+        "provider_transaction_id": "TX_FAILED",
+        "pix_transaction_id": None,
+        "receipt_layout": "mp_pag_bol",
+        "amount_matches_barcode": True,
+        "beneficiary_document": "12345678901",
+        "amount": Decimal("150.00"),
+        "payment_date": date(2026, 10, 14),
+    }
+
+    with (
+        patch("src.main.engine"),
+        patch("src.main.create_tables"),
+        patch("src.main.extract_text_from_image", return_value="texto OCR"),
+        patch("src.main.extract_receipt_data", return_value=receipt_data),
+        patch("src.main.extract_receipt_hash", return_value="hash_failed"),
+        patch("src.main.find_existing_transaction", return_value=None),
+        patch("src.main.build_authorization_url", return_value="url_teste"),
+        patch("src.main.wait_for_authorization_code", return_value="codigo_teste"),
+        patch(
+            "src.main.exchange_code_for_token",
+            return_value={"access_token": "token_teste"},
+        ),
+        patch(
+            "src.main.calculate_due_date_window",
+            return_value=("2026-09-29", "2026-10-29"),
+        ),
+        patch("src.main.get_all_accounts_payable", return_value=[{"id": 123}]),
+        patch(
+            "src.main.find_matching_accounts",
+            return_value=[{"id": 123}],
+        ),
+        patch("src.main.classify_matching_result", return_value="unique"),
+        patch("src.main.summarize_accounts", return_value="Conta de teste"),
+        patch("src.main.insert_new_transaction", return_value=42) as mock_insert,
+        patch("src.main.settle_account_payable", return_value=False) as mock_settle,
+        patch("src.main.get_account_payable_by_id") as mock_get_account,
+        patch("src.main.mark_transaction_as_processed") as mock_mark_processed,
+    ):
+        result = main(
+            file_path="comprovante_teste.jpeg",
+            settlement_enabled=True,
+        )
+
+    assert result["status"] == "verification_pending"
+    assert result["reason"] == "settlement_request_failed"
+    assert result["transaction_id"] == 42
+    assert result["id_tiny"] == 123
+
+    transaction_data = mock_insert.call_args.kwargs["transaction_data"]
+    assert transaction_data["status"] == "processing"
+
+    mock_settle.assert_called_once()
+    mock_get_account.assert_not_called()
+    mock_mark_processed.assert_not_called()

@@ -1,5 +1,7 @@
 from decimal import Decimal
 from pathlib import Path
+from datetime import date
+
 
 from src.auth import (
     build_authorization_url,
@@ -16,7 +18,7 @@ from src.matching import (
 )
 
 from src.tiny_client import (
-    get_accounts_payable,
+    get_all_accounts_payable,
     get_account_payable_by_id,
     settle_account_payable,
 )
@@ -38,6 +40,31 @@ from src.receipt_hash_extractor import extract_receipt_hash
 from src.pdf_text_extractor import extract_text_from_pdf
 from src.image_text_extractor import extract_text_from_image
 
+
+def make_result(
+    status: str,
+    message: str,
+    beneficiary_document: str | None = None,
+    payment_date: date | None = None,
+    amount: Decimal | None = None,
+    transaction_id: int | None = None,
+    id_tiny: int | None = None,
+    reason: str | None = None,
+) -> dict:
+    return {
+        "status": status,
+        "message": message,
+        "beneficiary_document": (
+            "".join(char for char in beneficiary_document if char.isdigit())
+            if beneficiary_document
+            else None
+        ),
+        "payment_date": payment_date,
+        "amount": amount,
+        "transaction_id": transaction_id,
+        "id_tiny": id_tiny,
+        "reason": reason,
+    }
 
 def is_account_settled(account: dict) -> bool:
     balance = account.get("saldo")
@@ -127,6 +154,26 @@ def main(file_path: str, settlement_enabled: bool = False):
         "file_hash": file_hash,
     }
 
+    def finish(
+        status: str,
+        message: str,
+        transaction_id: int | None = None,
+        id_tiny: int | None = None,
+        reason: str | None = None,
+    ) -> dict:
+        print(message)
+
+        return make_result(
+            status=status,
+            message=message,
+            beneficiary_document=payment.get("beneficiary_document"),
+            payment_date=payment.get("payment_date"),
+            amount=payment.get("amount"),
+            transaction_id=transaction_id,
+            id_tiny=id_tiny,
+            reason=reason,
+        )
+
     # ---------------------------------------------------------
     # IDENTIDADE / IDEMPOTÊNCIA LOCAL
     # ---------------------------------------------------------
@@ -149,25 +196,34 @@ def main(file_path: str, settlement_enabled: bool = False):
     if existing_transaction is not None:
 
         if existing_transaction.get("identity_conflict", False):
-            print(
-                "Conflito entre identificadores financeiros. "
-                "Operação bloqueada para revisão manual. "
-                "Nenhuma consulta ou baixa será realizada no Tiny."
+            return finish(
+                status="review_required",
+                message=(
+                    "Conflito entre identificadores financeiros. "
+                    "Operação bloqueada para revisão manual. "
+                    "Nenhuma consulta ou baixa será realizada no Tiny."
+                ),
+                reason="identity_conflict",
             )
-            return
 
         existing_status = existing_transaction["status"]
 
         if existing_status == "processed":
-            print("Transação já processada.")
-            return
+            return finish(
+                status="already_processed",
+                message="Transação já processada.",
+                transaction_id=existing_transaction["id"],
+            )
 
         if existing_status == "review_required":
-            print(
-                "Transação já registrada para revisão manual. "
-                "Nenhuma baixa automática será realizada."
+            return finish(
+                status="already_in_review",
+                message=(
+                    "Transação já registrada para revisão manual. "
+                    "Nenhuma baixa automática será realizada."
+                ),
+                transaction_id=existing_transaction["id"],
             )
-            return
 
     # ---------------------------------------------------------
     # ELEGIBILIDADE PARA PROCESSAMENTO AUTOMÁTICO
@@ -191,7 +247,8 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
         missing_required_data = (
-            payment["beneficiary_document"] is None
+            payment["provider"] != "mercado_pago"
+            or payment["beneficiary_document"] is None
             or payment["amount"] is None
             or payment["payment_date"] is None
         )
@@ -219,12 +276,15 @@ def main(file_path: str, settlement_enabled: bool = False):
                     db_connection=db_connection,
                 )
 
-            print(
-                "Comprovante não elegível para baixa automática. "
-                "Transação registrada para revisão manual. "
-                f"ID local: {transaction_id}"
+            return finish(
+                status="review_required",
+                message=(
+                    "Comprovante não elegível para baixa automática. "
+                    "Transação registrada para revisão manual. "
+                    f"ID local: {transaction_id}"
+                ),
+                transaction_id=transaction_id,
             )
-            return
 
     # ---------------------------------------------------------
     # GERAÇÃO DE TOKEN DE ACESSO E AUTENTICAÇÃO
@@ -241,19 +301,29 @@ def main(file_path: str, settlement_enabled: bool = False):
     authorization_code = wait_for_authorization_code()
 
     if authorization_code is None:
-        print("Falha ao obter o código de autorização.")
-        return
+        return finish(
+            status="error",
+            message="Falha ao obter o código de autorização.",
+            reason="authorization_code_missing",
+        )
 
     token_data = exchange_code_for_token(authorization_code)
 
     if token_data is None:
-        return
+        return finish(
+            status="error",
+            message="Falha ao obter o token de acesso.",
+            reason="token_exchange_failed",
+        )
 
     access_token = token_data.get("access_token")
 
     if access_token is None:
-        print("Falha ao obter o access token.")
-        return
+        return finish(
+            status="error",
+            message="Falha ao obter o access token.",
+            reason="access_token_missing",
+        )
 
     # ---------------------------------------------------------
     # CAMINHO 1: TRANSAÇÃO EXISTENTE EM PROCESSING
@@ -298,9 +368,23 @@ def main(file_path: str, settlement_enabled: bool = False):
                 "A transação não será processada."
             ),
         }
+        reconciliation_status = {
+            "already_processed": "already_processed",
+            "reconciled": "processed",
+            "verification_failed": "verification_pending",
+            "not_settled": "verification_pending",
+            "local_update_failed": "verification_pending",
+            "review_required": "review_required",
+            "unexpected_status": "error",
+        }
 
-        print(reconciliation_messages[reconciliation_result])
-        return
+        return finish(
+            status=reconciliation_status[reconciliation_result],
+            message=reconciliation_messages[reconciliation_result],
+            transaction_id=existing_transaction["id"],
+            id_tiny=existing_transaction.get("id_tiny"),
+            reason=reconciliation_result,
+        )
 
     # ---------------------------------------------------------
     # BUSCA DE CANDIDATOS NO TINY
@@ -309,7 +393,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         payment["payment_date"]
     )
 
-    accounts_payable_data = get_accounts_payable(
+    accounts_payable_data = get_all_accounts_payable(
         access_token,
         status="aberto",
         initial_due_date=initial_due_date,
@@ -317,8 +401,11 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
     if accounts_payable_data is None:
-        print("Falha ao obter dados das contas a pagar.")
-        return
+        return finish(
+            status="error",
+            message="Falha ao obter dados das contas a pagar.",
+            reason="accounts_fetch_failed",
+        )
 
     # ---------------------------------------------------------
     # MATCHING
@@ -334,20 +421,27 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
     if classification == "no_match":
-        print("Nenhuma conta localizada para o comprovante.")
-        return
+        return finish(
+            status="no_match",
+            message=(
+                "Nenhuma conta localizada para o comprovante. "
+                "Verifique CPF/CNPJ, valor e data no Tiny."
+            ),
+        )
 
     accounts_data = summarize_accounts(
         matching_accounts=matching_accounts,
     )
 
     if classification == "ambiguous":
-        print(
-            "Múltiplas contas localizadas para o comprovante. "
-            "Dados das contas a seguir:"
+        return finish(
+            status="ambiguous_match",
+            message=(
+                "Múltiplas contas localizadas para o comprovante. "
+                "É necessária conferência manual.\n"
+                f"{accounts_data}"
+            ),
         )
-        print(accounts_data)
-        return
 
     # ---------------------------------------------------------
     # UNIQUE MATCH
@@ -377,11 +471,14 @@ def main(file_path: str, settlement_enabled: bool = False):
     # BARREIRA DE ESCRITA
     # ---------------------------------------------------------
     if not settlement_enabled:
-        print(
-            "Modo somente leitura: nenhuma alteração será realizada "
-            "no banco local ou no Tiny."
+        return finish(
+            status="dry_run",
+            message=(
+                "Conta correspondente localizada, mas a baixa "
+                "automática está desabilitada."
+            ),
+            id_tiny=id_tiny,
         )
-        return
 
     # ---------------------------------------------------------
     # CAMINHO 2: TRANSAÇÃO NOVA
@@ -409,11 +506,16 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
     if not success:
-        print(
-            "Não foi possível confirmar a baixa. "
-            "Transação permanece como processing."
+        return finish(
+            status="verification_pending",
+            message=(
+                "Não foi possível confirmar a baixa. "
+                "Transação permanece como processing."
+            ),
+            transaction_id=transaction_id,
+            id_tiny=id_tiny,
+            reason="settlement_request_failed",
         )
-        return
 
     # ---------------------------------------------------------
     # CONFIRMAÇÃO DA BAIXA NO TINY
@@ -424,22 +526,32 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
     if account_after_settlement is None:
-        print(
-            "Não foi possível consultar o estado da conta após a baixa. "
-            "Transação permanece como processing."
+        return finish(
+            status="verification_pending",
+            message=(
+                "Não foi possível consultar o estado da conta após a baixa. "
+                "Transação permanece como processing."
+            ),
+            transaction_id=transaction_id,
+            id_tiny=id_tiny,
+            reason="post_settlement_fetch_failed",
         )
-        return
 
     settlement_confirmed = is_account_settled(
         account=account_after_settlement,
     )
 
     if not settlement_confirmed:
-        print(
-            "O Tiny não confirmou a liquidação da conta. "
-            "Transação permanece como processing."
+        return finish(
+            status="verification_pending",
+            message=(
+                "O Tiny não confirmou a liquidação da conta. "
+                "Transação permanece como processing."
+            ),
+            transaction_id=transaction_id,
+            id_tiny=id_tiny,
+            reason="settlement_not_confirmed",
         )
-        return
 
     # ---------------------------------------------------------
     # CONFIRMAÇÃO LOCAL
@@ -451,21 +563,30 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     if not processed:
-        print(
-            "Baixa confirmada no Tiny, mas houve falha ao atualizar "
-            "o estado local. A transação permanece inconsistente "
-            "e deve ser verificada."
+        return finish(
+            status="verification_pending",
+            message=(
+                "Baixa confirmada no Tiny, mas houve falha ao atualizar "
+                "o estado local. A transação deve ser verificada."
+            ),
+            transaction_id=transaction_id,
+            id_tiny=id_tiny,
+            reason="local_update_failed",
         )
-        return
 
-    print(
-        "Baixa confirmada no Tiny e transação marcada "
-        "localmente como processed."
+    return finish(
+        status="processed",
+        message=(
+            "Baixa confirmada no Tiny e transação marcada "
+            "localmente como processed."
+        ),
+        transaction_id=transaction_id,
+        id_tiny=id_tiny,
     )
 
 if __name__ == "__main__":
     main(
-        file_path="data/input/pix_bol_1.jpeg",
+        file_path="data/input/pag_bol_1.jpeg",
         settlement_enabled=False,
     )
 
