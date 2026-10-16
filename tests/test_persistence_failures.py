@@ -46,16 +46,8 @@ def test_database_insert_failure_prevents_tiny_settlement():
             return_value=None,
         ),
         patch(
-            "src.main.build_authorization_url",
-            return_value="https://example.test",
-        ),
-        patch(
-            "src.main.wait_for_authorization_code",
-            return_value="fake_code",
-        ),
-        patch(
-            "src.main.exchange_code_for_token",
-            return_value={"access_token": "fake_token"},
+            "src.main.get_valid_access_token",
+            return_value="fake_token",
         ),
         patch(
             "src.main.calculate_due_date_window",
@@ -99,7 +91,7 @@ def test_database_insert_failure_prevents_tiny_settlement():
 
     mock_settle.assert_not_called()
 
-    # Desired behavior: a controlled, structured failure.
+    # Database failures must produce a controlled error.
     assert result is not None
     assert result["status"] == "error"
     assert result["reason"] == "database_insert_failed"
@@ -123,7 +115,6 @@ def test_database_update_failure_after_confirmed_settlement():
         Exception("database is locked"),
     )
 
-
     with ExitStack() as stack:
         stack.enter_context(patch("src.main.engine"))
         stack.enter_context(patch("src.main.create_tables"))
@@ -143,15 +134,9 @@ def test_database_update_failure_after_confirmed_settlement():
             patch("src.main.find_existing_transaction", return_value=None)
         )
         stack.enter_context(
-            patch("src.main.build_authorization_url", return_value="https://example.test")
-        )
-        stack.enter_context(
-            patch("src.main.wait_for_authorization_code", return_value="fake_code")
-        )
-        stack.enter_context(
             patch(
-                "src.main.exchange_code_for_token",
-                return_value={"access_token": "fake_token"},
+                "src.main.get_valid_access_token",
+                return_value="fake_token",
             )
         )
         stack.enter_context(
@@ -205,6 +190,7 @@ def test_database_update_failure_after_confirmed_settlement():
         )
 
     mock_settle.assert_called_once()
+
     assert result is not None
     assert result["status"] == "verification_pending"
     assert result["reason"] == "local_update_failed"
@@ -221,13 +207,6 @@ def test_settlement_timeout_keeps_transaction_pending():
         "amount": Decimal("150.00"),
         "payment_date": date(2026, 10, 14),
     }
-
-    database_error = OperationalError(
-        "UPDATE tratoray_transactions ...",
-        {},
-        Exception("database is locked"),
-    )
-
 
     with ExitStack() as stack:
         stack.enter_context(patch("src.main.engine"))
@@ -248,15 +227,9 @@ def test_settlement_timeout_keeps_transaction_pending():
             patch("src.main.find_existing_transaction", return_value=None)
         )
         stack.enter_context(
-            patch("src.main.build_authorization_url", return_value="https://example.test")
-        )
-        stack.enter_context(
-            patch("src.main.wait_for_authorization_code", return_value="fake_code")
-        )
-        stack.enter_context(
             patch(
-                "src.main.exchange_code_for_token",
-                return_value={"access_token": "fake_token"},
+                "src.main.get_valid_access_token",
+                return_value="fake_token",
             )
         )
         stack.enter_context(
@@ -297,19 +270,6 @@ def test_settlement_timeout_keeps_transaction_pending():
 
         mock_mark_processed = stack.enter_context(
             patch("src.main.mark_transaction_as_processed")
-        )
-
-        stack.enter_context(
-            patch(
-                "src.main.get_account_payable_by_id",
-                return_value={"situacao": "pago", "saldo": 0},
-            )
-        )
-        stack.enter_context(
-            patch(
-                "src.main.mark_transaction_as_processed",
-                side_effect=database_error,
-            )
         )
 
         result = main(

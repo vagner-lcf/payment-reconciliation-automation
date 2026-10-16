@@ -178,7 +178,7 @@ def test_reconcile_existing_transaction_status_without_reconciliation(
 
 @pytest.mark.parametrize(
     "status",
-    ["processed", "processing", "review_required"]
+    ["processed", "processing", "review_required"],
 )
 def test_main_blocks_identity_conflict_before_tiny(status):
     existing_transaction = {
@@ -203,7 +203,9 @@ def test_main_blocks_identity_conflict_before_tiny(status):
             "src.main.find_existing_transaction",
             return_value=existing_transaction,
         ),
-        patch("src.main.build_authorization_url") as mock_oauth,
+        patch(
+            "src.main.get_valid_access_token",
+        ) as mock_get_token,
         patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
         patch("src.main.reconcile_existing_transaction") as mock_reconcile,
@@ -213,10 +215,11 @@ def test_main_blocks_identity_conflict_before_tiny(status):
             settlement_enabled=False,
         )
 
-    mock_oauth.assert_not_called()
+    mock_get_token.assert_not_called()
     mock_get_accounts.assert_not_called()
     mock_settle.assert_not_called()
     mock_reconcile.assert_not_called()
+
     assert result["status"] == "review_required"
     assert result["reason"] == "identity_conflict"
 
@@ -254,7 +257,9 @@ def test_main_blocks_ineligible_images_before_tiny(
         patch("src.main.extract_receipt_data", return_value=receipt_data),
         patch("src.main.extract_receipt_hash", return_value="hash_imagem"),
         patch("src.main.find_existing_transaction", return_value=None),
-        patch("src.main.build_authorization_url") as mock_oauth,
+        patch(
+            "src.main.get_valid_access_token",
+        ) as mock_get_token,
         patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
         patch(
@@ -264,10 +269,10 @@ def test_main_blocks_ineligible_images_before_tiny(
     ):
         result = main(
             file_path="data/input/comprovante_teste.jpeg",
-            settlement_enabled=False
+            settlement_enabled=False,
         )
 
-    mock_oauth.assert_not_called()
+    mock_get_token.assert_not_called()
     mock_get_accounts.assert_not_called()
     mock_settle.assert_not_called()
     mock_insert.assert_called_once()
@@ -278,6 +283,7 @@ def test_main_blocks_ineligible_images_before_tiny(
     assert transaction_data["file_hash"] == "hash_imagem"
     assert result["status"] == "review_required"
     assert result["transaction_id"] == 42
+
 
 @pytest.mark.parametrize(
     "missing_field",
@@ -312,7 +318,9 @@ def test_main_blocks_missing_required_data_before_tiny(missing_field):
             "src.main.insert_new_transaction",
             return_value=42,
         ) as mock_insert,
-        patch("src.main.build_authorization_url") as mock_oauth,
+        patch(
+            "src.main.get_valid_access_token",
+        ) as mock_get_token,
         patch("src.main.get_all_accounts_payable") as mock_get_accounts,
         patch("src.main.settle_account_payable") as mock_settle,
     ):
@@ -327,7 +335,7 @@ def test_main_blocks_missing_required_data_before_tiny(missing_field):
 
     assert transaction_data["status"] == "review_required"
 
-    mock_oauth.assert_not_called()
+    mock_get_token.assert_not_called()
     mock_get_accounts.assert_not_called()
     mock_settle.assert_not_called()
 
@@ -357,19 +365,9 @@ def test_main_eligible_image_reaches_matching_without_settlement():
         patch("src.main.find_existing_transaction", return_value=None),
 
         patch(
-            "src.main.build_authorization_url",
-            return_value="https://oauth.example.test",
-        ) as mock_oauth,
-
-        patch(
-            "src.main.wait_for_authorization_code",
-            return_value="codigo_teste",
-        ),
-
-        patch(
-            "src.main.exchange_code_for_token",
-            return_value={"access_token": "token_teste"},
-        ),
+            "src.main.get_valid_access_token",
+            return_value="token_teste",
+        ) as mock_get_token,
 
         patch(
             "src.main.calculate_due_date_window",
@@ -408,13 +406,13 @@ def test_main_eligible_image_reaches_matching_without_settlement():
             settlement_enabled=False,
         )
 
-    # Imagem elegível deve alcançar o OAuth.
-    mock_oauth.assert_called_once()
+    # Eligible images must request a valid access token.
+    mock_get_token.assert_called_once_with()
 
-    # Deve consultar as contas a pagar.
+    # The application must retrieve accounts payable.
     mock_get_accounts.assert_called_once()
 
-    # Deve executar o matching com os dados extraídos.
+    # Matching must use the extracted receipt data.
     mock_matching.assert_called_once()
 
     assert mock_matching.call_args.args[1:] == (
@@ -428,11 +426,10 @@ def test_main_eligible_image_reaches_matching_without_settlement():
     assert result["amount"] == Decimal("150.00")
     assert result["payment_date"] == date(2026, 10, 14)
 
-    # Modo sem autorização de baixa:
-    # nenhuma transação processing deve ser inserida.
+    # Dry-run mode must not create a processing transaction.
     mock_insert.assert_not_called()
 
-    # Nenhuma baixa financeira deve ocorrer.
+    # No financial settlement must occur.
     mock_settle.assert_not_called()
 
 
@@ -454,7 +451,7 @@ def test_unknown_provider_requires_manual_review(monkeypatch):
     monkeypatch.setattr(
         main_module,
         "extract_text_from_pdf",
-        lambda file_path: "PDF Itaú simulado",
+        lambda file_path: "Simulated Itaú PDF",
     )
 
     monkeypatch.setattr(
@@ -469,7 +466,7 @@ def test_unknown_provider_requires_manual_review(monkeypatch):
         lambda file_path: "hash_teste_provider_unknown",
     )
 
-    # Impede que o teste utilize o banco de dados real.
+    # Prevent the test from accessing the production database.
     from sqlalchemy import create_engine
     from sqlalchemy.pool import StaticPool
 
@@ -481,15 +478,15 @@ def test_unknown_provider_requires_manual_review(monkeypatch):
 
     monkeypatch.setattr(main_module, "engine", test_engine)
 
-    # Se tentar consultar ou alterar o Tiny, o teste falha.
+    # Any attempt to authenticate or access Tiny must fail the test.
     def unexpected_tiny_call(*args, **kwargs):
         raise AssertionError(
-            "Comprovante de banco não autorizado chegou ao Tiny."
+            "An unsupported provider attempted to access Tiny."
         )
 
     monkeypatch.setattr(
         main_module,
-        "build_authorization_url",
+        "get_valid_access_token",
         unexpected_tiny_call,
     )
 
@@ -521,7 +518,7 @@ def test_unknown_provider_requires_manual_review(monkeypatch):
     table_names = inspect(test_engine).get_table_names()
 
     assert len(table_names) == 1, (
-        f"Esperava uma tabela de transações, encontrei: {table_names}"
+        f"Expected one transaction table, found: {table_names}"
     )
 
     with test_engine.connect() as connection:
@@ -551,11 +548,9 @@ def test_main_returns_processed_after_confirmed_settlement():
         patch("src.main.extract_receipt_data", return_value=receipt_data),
         patch("src.main.extract_receipt_hash", return_value="hash_success"),
         patch("src.main.find_existing_transaction", return_value=None),
-        patch("src.main.build_authorization_url", return_value="url_teste"),
-        patch("src.main.wait_for_authorization_code", return_value="codigo_teste"),
         patch(
-            "src.main.exchange_code_for_token",
-            return_value={"access_token": "token_teste"},
+            "src.main.get_valid_access_token",
+            return_value="token_teste",
         ),
         patch(
             "src.main.calculate_due_date_window",
@@ -623,11 +618,9 @@ def test_main_returns_verification_pending_when_settlement_fails():
         patch("src.main.extract_receipt_data", return_value=receipt_data),
         patch("src.main.extract_receipt_hash", return_value="hash_failed"),
         patch("src.main.find_existing_transaction", return_value=None),
-        patch("src.main.build_authorization_url", return_value="url_teste"),
-        patch("src.main.wait_for_authorization_code", return_value="codigo_teste"),
         patch(
-            "src.main.exchange_code_for_token",
-            return_value={"access_token": "token_teste"},
+            "src.main.get_valid_access_token",
+            return_value="token_teste",
         ),
         patch(
             "src.main.calculate_due_date_window",

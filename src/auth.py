@@ -47,3 +47,30 @@ def exchange_code_for_token(
     return response.json()
 
 
+def refresh_access_token(refresh_token: str) -> dict | None:
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": OLIST_CLIENT_ID,
+        "client_secret": OLIST_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+    }
+
+    try:
+        response = requests.post(
+            TOKEN_URL,
+            data=data,
+            timeout=10,
+        )
+        response.raise_for_status()
+        token_data = response.json()
+
+    except (requests.RequestException, ValueError):
+        return None
+
+    if not isinstance(token_data, dict):
+        return None
+
+    if not token_data.get("access_token"):
+        return None
+
+    return token_data

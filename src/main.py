@@ -4,12 +4,7 @@ from datetime import date
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.auth import (
-    build_authorization_url,
-    exchange_code_for_token,
-)
-
-from src.callback import wait_for_authorization_code
+from src.token_manager import get_valid_access_token
 
 from src.matching import (
     calculate_due_date_window,
@@ -288,43 +283,20 @@ def main(file_path: str, settlement_enabled: bool = False):
                 transaction_id=transaction_id,
             )
 
+
     # ---------------------------------------------------------
-    # GERAÇÃO DE TOKEN DE ACESSO E AUTENTICAÇÃO
+    # TINY API AUTHENTICATION
     # ---------------------------------------------------------
-    # Só chegamos ao OAuth quando realmente precisamos consultar
-    # ou alterar alguma informação no Tiny.
-    authorization_url = build_authorization_url()
-
-    print(
-        f"Acesse o seguinte URL para autorizar o aplicativo:\n"
-        f"{authorization_url}"
-    )
-
-    authorization_code = wait_for_authorization_code()
-
-    if authorization_code is None:
-        return finish(
-            status="error",
-            message="Falha ao obter o código de autorização.",
-            reason="authorization_code_missing",
-        )
-
-    token_data = exchange_code_for_token(authorization_code)
-
-    if token_data is None:
-        return finish(
-            status="error",
-            message="Falha ao obter o token de acesso.",
-            reason="token_exchange_failed",
-        )
-
-    access_token = token_data.get("access_token")
+    access_token = get_valid_access_token()
 
     if access_token is None:
         return finish(
             status="error",
-            message="Falha ao obter o access token.",
-            reason="access_token_missing",
+            message=(
+                "A autorização do Tiny está indisponível. "
+                "Solicite uma nova autorização antes de continuar."
+            ),
+            reason="tiny_authorization_required",
         )
 
     # ---------------------------------------------------------
@@ -637,8 +609,8 @@ def main(file_path: str, settlement_enabled: bool = False):
 
 if __name__ == "__main__":
     main(
-        file_path="data/input/pag_bol_1.jpeg",
-        settlement_enabled=False,
+        file_path="data/input/pix_bol_2.jpeg",
+        settlement_enabled=True,
     )
 
 

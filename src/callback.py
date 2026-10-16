@@ -28,13 +28,18 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
 
 def wait_for_authorization_code() -> str | None:
+    """Wait for a single OAuth callback with a timeout."""
+
     server = HTTPServer(("localhost", 8000), CallbackHandler)
     server.authorization_code = None
+    server.timeout = 120
 
-    print("Aguardando callback...")
-    server.handle_request()
-
-    return server.authorization_code
+    try:
+        print("Aguardando autorização do Tiny...")
+        server.handle_request()
+        return server.authorization_code
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":

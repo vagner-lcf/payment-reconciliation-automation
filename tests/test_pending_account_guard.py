@@ -61,16 +61,8 @@ def test_new_receipt_cannot_settle_account_with_pending_transaction(
                 return_value="hash_receipt_B",
             ),
             patch(
-                "src.main.build_authorization_url",
-                return_value="https://example.test",
-            ),
-            patch(
-                "src.main.wait_for_authorization_code",
-                return_value="fake_code",
-            ),
-            patch(
-                "src.main.exchange_code_for_token",
-                return_value={"access_token": "fake_token"},
+                "src.main.get_valid_access_token",
+                return_value="fake_token",
             ),
             patch(
                 "src.main.calculate_due_date_window",
@@ -106,7 +98,7 @@ def test_new_receipt_cannot_settle_account_with_pending_transaction(
                 settlement_enabled=True,
             )
 
-        # Expected behavior after the safety guard is implemented.
+        # A pending transaction must prevent a second settlement.
         assert result["status"] == "review_required"
         assert result["reason"] == "account_has_pending_transaction"
         mock_settle.assert_not_called()
@@ -159,16 +151,8 @@ def test_new_receipt_can_settle_account_without_pending_transaction(
                 return_value="hash_new_receipt",
             ),
             patch(
-                "src.main.build_authorization_url",
-                return_value="https://example.test",
-            ),
-            patch(
-                "src.main.wait_for_authorization_code",
-                return_value="fake_code",
-            ),
-            patch(
-                "src.main.exchange_code_for_token",
-                return_value={"access_token": "fake_token"},
+                "src.main.get_valid_access_token",
+                return_value="fake_token",
             ),
             patch(
                 "src.main.calculate_due_date_window",
