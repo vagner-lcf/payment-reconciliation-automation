@@ -31,14 +31,18 @@ def get_accounts_payable(
         query_params["dataFinalVencimento"] = final_due_date
 
     try:
-        response = requests.get(accounts_payable_url, headers=headers, params=query_params, timeout=10)
+        response = requests.get(
+            accounts_payable_url,
+            headers=headers,
+            params=query_params,
+            timeout=10,
+        )
         response.raise_for_status()
+        accounts_payable_data = response.json()
 
     except requests.RequestException as e:
         print("Erro ao buscar contas a pagar:", e)
         return None
-
-    accounts_payable_data = response.json()
 
     return accounts_payable_data
 
@@ -74,6 +78,9 @@ def get_all_accounts_payable(
         pagination = response.get("paginacao")
 
         if not isinstance(items, list):
+            return None
+
+        if not all(isinstance(item, dict) for item in items):
             return None
 
         if not isinstance(pagination, dict):
@@ -112,14 +119,17 @@ def get_account_payable_by_id(
         )
 
     try:
-        response = requests.get(account_payable_by_id_url, headers=headers, timeout=10)
+        response = requests.get(
+            account_payable_by_id_url,
+            headers=headers,
+            timeout=10
+        )
         response.raise_for_status()
+        account_payable_data_by_id = response.json()
 
     except requests.RequestException as e:
         print("Erro ao buscar conta a pagar pelo ID:", e)
         return None
-
-    account_payable_data_by_id = response.json()
 
     return account_payable_data_by_id
 
@@ -136,12 +146,11 @@ def get_account_payable_payments(
     try:
         response = requests.get(account_payable_payments_url, headers=headers, timeout=10)
         response.raise_for_status()
+        account_payable_payments = response.json()
 
     except requests.RequestException as e:
         print("Erro ao buscar conta a pagar pelo ID:", e)
         return None
-
-    account_payable_payments = response.json()
 
     return account_payable_payments
 

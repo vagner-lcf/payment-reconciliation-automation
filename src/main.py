@@ -2,6 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 from datetime import date
 
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.auth import (
     build_authorization_url,
@@ -506,10 +507,24 @@ def main(file_path: str, settlement_enabled: bool = False):
     # CAMINHO 2: TRANSAÇÃO NOVA
     # ---------------------------------------------------------
     # Registra processing ANTES de qualquer operação financeira.
-    with engine.begin() as db_connection:
-        transaction_id = insert_new_transaction(
-            transaction_data=transaction_data,
-            db_connection=db_connection,
+
+    try:
+        with engine.begin() as db_connection:
+            transaction_id = insert_new_transaction(
+                transaction_data=transaction_data,
+                db_connection=db_connection,
+            )
+
+    except SQLAlchemyError:
+        return finish(
+            status="error",
+            message=(
+                "Não foi possível registrar a transação "
+                "no banco de dados. "
+                "Nenhuma baixa foi solicitada ao Tiny."
+            ),
+            id_tiny=id_tiny,
+            reason="database_insert_failed",
         )
 
     print(
@@ -578,10 +593,24 @@ def main(file_path: str, settlement_enabled: bool = False):
     # ---------------------------------------------------------
     # CONFIRMAÇÃO LOCAL
     # ---------------------------------------------------------
-    with engine.begin() as db_connection:
-        processed = mark_transaction_as_processed(
+    try:
+        with engine.begin() as db_connection:
+            processed = mark_transaction_as_processed(
+                transaction_id=transaction_id,
+                db_connection=db_connection,
+            )
+    except SQLAlchemyError:
+        return finish(
+            status="verification_pending",
+            message=(
+                "Baixa confirmada no Tiny, mas houve uma falha "
+                "no banco de dados ao registrar a confirmação local. "
+                "Não tente realizar outra baixa automaticamente. "
+                "É necessária conferência manual."
+            ),
             transaction_id=transaction_id,
-            db_connection=db_connection,
+            id_tiny=id_tiny,
+            reason="local_update_failed",
         )
 
     if not processed:
