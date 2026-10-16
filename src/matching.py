@@ -3,16 +3,50 @@ from decimal import Decimal
 import re
 
 
-def calculate_due_date_window(payment_date: date, range_days: int = 15) -> tuple[str, str]:
+def calculate_due_date_window(
+    payment_date: date,
+    range_days: int = 10,
+) -> tuple[str, str]:
+    """Calculate the Tiny due-date search window around a payment date.
+
+    The default window is ten calendar days before and after the
+    payment date, based on the client's observed payment practices.
+
+    The window limits candidate retrieval but does not guarantee
+    a unique match. Ambiguous matches require manual review.
+
+    Args:
+        payment_date: Payment date extracted from the receipt.
+        range_days: Number of calendar days on each side of the
+            payment date. Defaults to 10.
+
+    Returns:
+        The initial and final due dates formatted as YYYY-MM-DD.
+    """
+
     initial_due_date = payment_date - timedelta(days=range_days)
     final_due_date = payment_date + timedelta(days=range_days)
 
     return initial_due_date.strftime("%Y-%m-%d"), final_due_date.strftime("%Y-%m-%d")
 
 def find_matching_accounts(
-        accounts_payable_data: dict,
-        beneficiary_document: str,
-        payment_amount: Decimal) -> list[dict]:
+    accounts_payable_data: dict,
+    beneficiary_document: str,
+    payment_amount: Decimal
+) -> list[dict]:
+    """Find payable accounts matching the receipt's beneficiary and amount.
+
+    Normalize CPF/CNPJ identifiers by removing non-digit characters.
+    A candidate matches only when its beneficiary document equals the
+    receipt's beneficiary document and its outstanding balance equals
+    the payment amount.
+
+    The due-date window is applied when retrieving accounts from Tiny,
+    not by this function.
+
+    Returns:
+        A list of matching payable accounts, possibly empty.
+    """
 
     matching_accounts = []
 
@@ -34,8 +68,16 @@ def find_matching_accounts(
     return matching_accounts
 
 def classify_matching_result(
-        matching_accounts: list[dict]
-        ) -> str:
+    matching_accounts: list[dict]
+) -> str:
+    """Classify a matching result based on the number of candidates.
+
+    Returns:
+        "unique_match" when exactly one account matches,
+        "no_match" when no accounts match, or
+        "ambiguous" when multiple accounts match.
+    """
+
     if len(matching_accounts) == 1:
         return "unique_match"
 
@@ -46,8 +88,17 @@ def classify_matching_result(
         return "ambiguous"
 
 def summarize_accounts(
-        matching_accounts: list[dict],
-        ) -> list[dict]:    
+    matching_accounts: list[dict],
+) -> list[dict]:
+    """Build a readable summary of matching Tiny payable accounts.
+
+    Extract account identifiers, supplier information, outstanding
+    balances, and due dates for diagnostics and manual review.
+
+    Returns:
+        A list of dictionaries with Portuguese display labels.
+    """
+
     accounts_data = []
     for account in matching_accounts:
         account_id = account.get("id")
@@ -71,4 +122,3 @@ def summarize_accounts(
         accounts_data.append(account_data_dict)
 
     return accounts_data
-

@@ -11,7 +11,19 @@ TOKEN_FILE = (
 
 
 def save_tokens(token_data: dict) -> None:
-    """Save OAuth tokens to local storage."""
+    """Persist OAuth token data to a local JSON file.
+
+    Write the data to a temporary file and replace the destination
+    only after serialization completes.
+
+    Args:
+        token_data: OAuth token data to persist.
+
+    Note:
+        File replacement does not provide encryption or restrict
+        access to the current Windows user.
+    """
+
     TOKEN_FILE.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -30,7 +42,12 @@ def save_tokens(token_data: dict) -> None:
 
 
 def load_tokens() -> dict | None:
-    """Load stored OAuth tokens, returning None if unavailable or invalid."""
+    """Load OAuth token data from the local JSON file.
+
+    Returns:
+        The stored token dictionary, or None if the file is missing,
+        unreadable, contains invalid JSON, or has an unexpected type.
+    """
 
     if not TOKEN_FILE.exists():
         return None

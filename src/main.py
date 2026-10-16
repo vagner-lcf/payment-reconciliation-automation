@@ -48,6 +48,20 @@ def make_result(
     id_tiny: int | None = None,
     reason: str | None = None,
 ) -> dict:
+    """Build a structured reconciliation result for external consumers.
+
+    The returned dictionary provides a stable interface for callers such
+    as the Telegram bot. Status and reason are machine-readable values,
+    while message contains user-facing text in Brazilian Portuguese.
+
+    Financial identifiers and payment details are included for internal
+    use and must be filtered before appearing in chat messages or logs.
+
+    Returns:
+        A dictionary containing status, message, reason, transaction_id,
+        id_tiny, beneficiary_document, payment_date, and amount.
+    """
+
     return {
         "status": status,
         "message": message,
@@ -64,6 +78,14 @@ def make_result(
     }
 
 def is_account_settled(account: dict) -> bool:
+    """Check whether Tiny reports an account as fully settled.
+
+    An account is considered settled only when its status is "pago"
+    and its outstanding balance is zero.
+
+    Missing balance information does not confirm settlement.
+    """
+
     balance = account.get("saldo")
 
     if balance is None:
@@ -75,54 +97,93 @@ def is_account_settled(account: dict) -> bool:
     )
 
 def reconcile_existing_transaction(
-            existing_transaction: dict,
-            access_token: str,
-            db_engine,
-        ) -> str:
+        existing_transaction: dict,
+        access_token: str,
+        db_engine,
+    ) -> str:
+    """Reconcile a previously recorded transaction against Tiny.
 
-            if existing_transaction["status"] == "processed":
-                return "already_processed"
+    Processed transactions are not settled again. Transactions still
+    marked as processing are checked against Tiny before their local
+    state can be updated.
 
-            if existing_transaction["status"] == "processing":
-                account_tiny = get_account_payable_by_id(
-                    access_token=access_token,
-                    id_account=existing_transaction["id_tiny"]
-                )
+    This function never requests a new settlement. An inconclusive
+    remote state must not trigger an automatic financial retry.
 
-                if account_tiny is None:
-                    return "verification_failed"
+    Returns:
+        A reconciliation outcome code interpreted by main().
+    """
 
-                account_is_settled = is_account_settled(
-                    account=account_tiny
-                )
+    if existing_transaction["status"] == "processed":
+        return "already_processed"
 
-                if not account_is_settled:
-                    return "not_settled"
+    if existing_transaction["status"] == "processing":
+        account_tiny = get_account_payable_by_id(
+            access_token=access_token,
+            id_account=existing_transaction["id_tiny"]
+        )
 
-                with db_engine.begin() as db_connection:
-                    processed = mark_transaction_as_processed(
-                        transaction_id=existing_transaction["id"],
-                        db_connection=db_connection,
-                    )   
-                if not processed:
-                    return "local_update_failed"
+        if account_tiny is None:
+            return "verification_failed"
 
-                return "reconciled"
+        account_is_settled = is_account_settled(
+            account=account_tiny
+        )
 
-            if existing_transaction["status"] == "review_required":
-                return "review_required"
+        if not account_is_settled:
+            return "not_settled"
 
-            return "unexpected_status"
+        with db_engine.begin() as db_connection:
+            processed = mark_transaction_as_processed(
+                transaction_id=existing_transaction["id"],
+                db_connection=db_connection,
+            )
+        if not processed:
+            return "local_update_failed"
+
+        return "reconciled"
+
+    if existing_transaction["status"] == "review_required":
+        return "review_required"
+
+    return "unexpected_status"
 
 
 def main(file_path: str, settlement_enabled: bool = False):
+    """Process a payment receipt and reconcile it with Tiny.
+
+    Extract receipt data, check local transaction identity, find a
+    matching payable account, and apply reconciliation safeguards.
+
+    Financial settlement is controlled by the settlement_enabled flag.
+    It defaults to False as a safety measure, allowing dry-run execution
+    during development, testing, and future maintenance.
+
+    In production, authorized callers can explicitly enable settlement.
+    Existing inconclusive transactions are reconciled without
+    automatically requesting another settlement.
+
+    Args:
+        file_path: Path to a PDF, PNG, JPG, or JPEG payment receipt.
+        settlement_enabled: Whether this execution is authorized to
+            request financial settlement. Defaults to False.
+
+    Returns:
+        A structured dictionary produced by make_result(), containing
+        the operation status, user-facing message, optional reason,
+        transaction identifiers, and extracted payment details.
+
+    Raises:
+        ValueError: If the receipt file extension is unsupported.
+    """
+
     # ---------------------------------------------------------
-    # PREPARAÇÃO DO BANCO LOCAL
+    # LOCAL DATABASE SETUP
     # ---------------------------------------------------------
     create_tables(engine)
 
     # ---------------------------------------------------------
-    # EXTRAÇÃO DE TEXTO POR TIPO DE ARQUIVO
+    # RECEIPT TEXT EXTRACTION
     # ---------------------------------------------------------
 
     file_extension = Path(file_path).suffix.lower()
@@ -172,7 +233,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # IDENTIDADE / IDEMPOTÊNCIA LOCAL
+    # LOCAL IDENTITY AND IDEMPOTENCY
     # ---------------------------------------------------------
     transaction_identity = {
         "file_hash": payment["file_hash"],
@@ -188,7 +249,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # ESTADOS QUE PODEM SER RESOLVIDOS LOCALMENTE
+    # LOCALLY RESOLVABLE TRANSACTION STATES
     # ---------------------------------------------------------
     if existing_transaction is not None:
 
@@ -223,12 +284,11 @@ def main(file_path: str, settlement_enabled: bool = False):
             )
 
     # ---------------------------------------------------------
-    # ELEGIBILIDADE PARA PROCESSAMENTO AUTOMÁTICO
+    # AUTOMATIC PROCESSING ELIGIBILITY
     # ---------------------------------------------------------
-
-    # Avaliação apenas de transações novas.
-    # Transações existentes seguem as regras de idempotência
-    # e reconciliação já implementadas.
+    # Evaluation applies only to new transactions.
+    # Existing transactions follow the idempotency
+    # and reconciliation rules already in place.
 
     if existing_transaction is None:
 
@@ -300,11 +360,11 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # CAMINHO 1: TRANSAÇÃO EXISTENTE EM PROCESSING
+    # EXISTING TRANSACTION IN PROCESSING
     # ---------------------------------------------------------
-    # processed e review_required já foram tratados localmente.
-    # Uma transação existente que chegou até aqui precisa de
-    # reconciliação com o Tiny.
+    # 'processed' and 'review_required' have already been handled locally.
+    # An existing transaction that has reached this point requires
+    # reconciliation with Tiny.
     if existing_transaction is not None:
         reconciliation_result = reconcile_existing_transaction(
             existing_transaction=existing_transaction,
@@ -361,7 +421,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # BUSCA DE CANDIDATOS NO TINY
+    # TINY ACCOUNT LOOKUP
     # ---------------------------------------------------------
     initial_due_date, final_due_date = calculate_due_date_window(
         payment["payment_date"]
@@ -448,7 +508,7 @@ def main(file_path: str, settlement_enabled: bool = False):
     print(accounts_data)
 
     # ---------------------------------------------------------
-    # DADOS PARA PERSISTÊNCIA
+    # TRANSACTION PERSISTENCE DATA
     # ---------------------------------------------------------
     transaction_data = {
         "file_hash": payment["file_hash"],
@@ -463,7 +523,7 @@ def main(file_path: str, settlement_enabled: bool = False):
     }
 
     # ---------------------------------------------------------
-    # BARREIRA DE ESCRITA
+    # FINANCIAL WRITE SAFEGUARD
     # ---------------------------------------------------------
     if not settlement_enabled:
         return finish(
@@ -476,9 +536,9 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # CAMINHO 2: TRANSAÇÃO NOVA
+    # NEW TRANSACTION
     # ---------------------------------------------------------
-    # Registra processing ANTES de qualquer operação financeira.
+    # Record 'processing' BEFORE any financial transaction.
 
     try:
         with engine.begin() as db_connection:
@@ -505,7 +565,7 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
     # ---------------------------------------------------------
-    # ESCRITA NO TINY
+    # WRITTEN IN TINY
     # ---------------------------------------------------------
     success = settle_account_payable(
         access_token=access_token,
@@ -527,7 +587,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # CONFIRMAÇÃO DA BAIXA NO TINY
+    # TINY SETTLEMENT CONFIRMATION
     # ---------------------------------------------------------
     account_after_settlement = get_account_payable_by_id(
         access_token=access_token,
@@ -563,7 +623,7 @@ def main(file_path: str, settlement_enabled: bool = False):
         )
 
     # ---------------------------------------------------------
-    # CONFIRMAÇÃO LOCAL
+    # LOCAL SETTLEMENT CONFIRMATION
     # ---------------------------------------------------------
     try:
         with engine.begin() as db_connection:
@@ -610,7 +670,7 @@ def main(file_path: str, settlement_enabled: bool = False):
 if __name__ == "__main__":
     main(
         file_path="data/input/pix_bol_2.jpeg",
-        settlement_enabled=True,
+        settlement_enabled=False,
     )
 
 

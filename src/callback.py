@@ -3,8 +3,15 @@ import urllib.parse
 
 
 class CallbackHandler(BaseHTTPRequestHandler):
+    """Handle the local HTTP callback used during Tiny authorization."""
 
     def do_GET(self) -> None:
+        """Capture an authorization code from a valid callback request.
+
+        Accept requests to /callback containing a code query parameter.
+        Return an HTML response indicating success or failure.
+        """
+
         parsed_url = urllib.parse.urlparse(self.path)
         query_params = urllib.parse.parse_qs(parsed_url.query)
 
@@ -28,7 +35,15 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
 
 def wait_for_authorization_code() -> str | None:
-    """Wait for a single OAuth callback with a timeout."""
+    """Wait for one Tiny OAuth callback on localhost port 8000.
+
+    Start a temporary HTTP server, handle a single request, and close
+    the server afterward. The configured request timeout is 120 seconds.
+
+    Returns:
+        The received authorization code, or None if no valid code
+        is captured.
+    """
 
     server = HTTPServer(("localhost", 8000), CallbackHandler)
     server.authorization_code = None

@@ -4,13 +4,24 @@ from decimal import Decimal
 
 
 def get_accounts_payable(
-        access_token,
-        status=None,
-        initial_due_date=None,
-        final_due_date=None,
-        limit=100,
-        offset=0
-        ) -> dict | None:
+    access_token,
+    status=None,
+    initial_due_date=None,
+    final_due_date=None,
+    limit=100,
+    offset=0
+) -> dict | None:
+    """Fetch one page of payable accounts from Tiny.
+
+    Optional filters restrict results by account status and due-date range.
+    The request uses a ten-second timeout.
+
+    Returns:
+        The decoded JSON response, or None if the HTTP request fails.
+
+    Note:
+        JSON decoding errors are not currently handled by this function.
+    """
 
     headers = {
         "Authorization": f"Bearer {access_token}"
@@ -53,7 +64,18 @@ def get_all_accounts_payable(
     final_due_date: str | None = None,
     limit: int = 100,
 ) -> dict | None:
-    """Busca todas as páginas de contas a pagar do Tiny."""
+    """Fetch and validate all pages of payable accounts from Tiny.
+
+    Retrieve pages sequentially and validate their item lists and
+    pagination metadata before returning the combined result.
+
+    Returns:
+        A dictionary containing all accounts under the "itens" key,
+        or None if a page fails validation or cannot be retrieved.
+
+    Raises:
+        ValueError: If limit is not greater than zero.
+    """
 
     if limit <= 0:
         raise ValueError("limit deve ser maior que zero")
@@ -108,8 +130,15 @@ def get_all_accounts_payable(
         offset += len(items)
 
 def get_account_payable_by_id(
-        access_token,
-        id_account: int) -> list[dict] | None:
+    access_token,
+    id_account: int
+) -> dict | None:
+    """Fetch a payable account by its Tiny identifier.
+
+    Returns:
+        The account data as a dictionary, or None if the HTTP
+        request fails.
+    """
 
     headers = {
         "Authorization": f"Bearer {access_token}"
@@ -134,8 +163,17 @@ def get_account_payable_by_id(
     return account_payable_data_by_id
 
 def get_account_payable_payments(
-        access_token,
-        id_account: int) -> list[dict] | None:
+    access_token,
+    id_account: int
+) -> list[dict] | None:
+    """Fetch payment records associated with a Tiny payable account.
+
+    Returns:
+        The decoded JSON response, or None if the HTTP request fails.
+
+    Note:
+        The response structure is not validated by this function.
+    """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
@@ -149,7 +187,7 @@ def get_account_payable_payments(
         account_payable_payments = response.json()
 
     except requests.RequestException as e:
-        print("Erro ao buscar conta a pagar pelo ID:", e)
+        print("Erro ao consultar os pagamentos da conta no Tiny: ", e)
         return None
 
     return account_payable_payments
@@ -160,7 +198,29 @@ def settle_account_payable(
     payment_date: date,
     amount: Decimal,
 ) -> bool:
-    
+    """Request financial settlement of a Tiny payable account.
+
+    Send the payment date and amount to Tiny's settlement endpoint.
+    A successful HTTP response indicates that the request was accepted,
+    but does not independently confirm the account's final state.
+
+    The caller must verify settlement through a subsequent account
+    lookup before marking the local transaction as processed.
+
+    Args:
+        access_token: OAuth access token used for Tiny authentication.
+        id_account: Identifier of the payable account.
+        payment_date: Date of the payment recorded in the receipt.
+        amount: Payment amount represented as Decimal.
+
+    Returns:
+        True if the HTTP request completes successfully; otherwise False.
+
+    Warning:
+        A failed or timed-out request may still have been applied remotely.
+        Never retry settlement automatically without verifying Tiny's state.
+    """
+
     headers = {
         "Authorization": f"Bearer {access_token}"
     }

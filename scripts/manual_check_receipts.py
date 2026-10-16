@@ -15,6 +15,12 @@ RECEIPT_FILES = [
 
 
 def main() -> None:
+    """Manually inspect OCR and parser results for sample receipts.
+
+    Calls Google Cloud Vision and prints extracted receipt data.
+    Intended for local diagnostics, not automated test execution.
+    """
+
     for filename in RECEIPT_FILES:
         file_path = INPUT_DIRECTORY / filename
 

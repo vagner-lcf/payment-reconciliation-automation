@@ -16,6 +16,15 @@ OLIST_REDIRECT_URI = os.getenv("OLIST_REDIRECT_URI")
 
 
 def build_authorization_url() -> str:
+    """Build the Tiny OAuth authorization URL.
+
+    Use the configured client ID and redirect URI to initiate the
+    authorization code flow.
+
+    Returns:
+        The URL used to request interactive user authorization.
+    """
+
     params = {
         "client_id": OLIST_CLIENT_ID,
         "redirect_uri": OLIST_REDIRECT_URI,
@@ -29,6 +38,18 @@ def build_authorization_url() -> str:
 def exchange_code_for_token(
     authorization_code: str,
 ) -> dict | None:
+    """Exchange an OAuth authorization code for Tiny tokens.
+
+    Args:
+        authorization_code: Code received through the OAuth callback.
+
+    Returns:
+        The decoded token response, or None if the HTTP request fails.
+
+    Note:
+        The returned JSON is not currently validated by this function.
+    """
+
     data = {
         "grant_type": "authorization_code",
         "client_id": OLIST_CLIENT_ID,
@@ -48,6 +69,19 @@ def exchange_code_for_token(
 
 
 def refresh_access_token(refresh_token: str) -> dict | None:
+    """Request new OAuth tokens using a refresh token.
+
+    Args:
+        refresh_token: Previously issued Tiny OAuth refresh token.
+
+    Returns:
+        A token response containing an access_token, or None if the
+        request fails or the response is invalid.
+
+    Note:
+        Token persistence is handled separately by token_manager.
+    """
+
     data = {
         "grant_type": "refresh_token",
         "client_id": OLIST_CLIENT_ID,

@@ -10,7 +10,15 @@ from src.token_manager import store_token_response
 
 
 def main() -> None:
-    """Run the interactive Tiny OAuth authorization flow."""
+    """Run the interactive Tiny OAuth authorization flow.
+
+    Open the authorization page in a browser, capture the local
+    callback, exchange the authorization code for tokens, and
+    persist the tokens for subsequent automated operations.
+
+    This flow is intended for initial authorization or manual
+    reauthorization, not for regular receipt processing.
+    """
 
     authorization_url = build_authorization_url()
 

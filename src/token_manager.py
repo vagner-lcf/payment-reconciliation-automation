@@ -8,7 +8,14 @@ EXPIRATION_MARGIN_SECONDS = 60
 
 
 def store_token_response(token_data: dict) -> None:
-    """Store OAuth tokens with their expiration timestamp."""
+    """Persist an OAuth token response with its expiration timestamp.
+
+    Calculate expires_at using the current Unix timestamp and the
+    expires_in duration returned by Tiny.
+
+    Args:
+        token_data: OAuth response containing expires_in and token data.
+    """
 
     stored_tokens = {
         **token_data,
@@ -19,7 +26,18 @@ def store_token_response(token_data: dict) -> None:
 
 
 def get_valid_access_token() -> str | None:
-    """Return a valid access token or attempt automatic renewal."""
+    """Retrieve a usable access token, refreshing it when necessary.
+
+    Reuse the stored access token while it remains valid, allowing a
+    60-second safety margin before expiration.
+
+    If renewal is required, request new tokens and persist them.
+    Preserve the previous refresh token when the response does not
+    include a replacement.
+
+    Returns:
+        A usable access token, or None if authentication is unavailable.
+    """
 
     token_data = load_tokens()
 

@@ -55,15 +55,28 @@ tb_tratoray_transactions = Table(
 
 
 def create_tables(db_engine) -> None:
+    """Create the local transaction tables if they do not exist."""
+
     metadata.create_all(db_engine)
 
 def find_existing_transaction(
     transaction_data: dict,
     db_connection: Connection
 ) -> dict | None:
+    """Find a transaction by file hash or financial identifiers.
 
+    The file hash is checked first. If no matching file is found,
+    Pix and provider transaction identifiers are checked independently.
+
+    Conflicting financial identifiers are flagged with the calculated
+    identity_conflict field. This field is not stored in SQLite.
+
+    Returns:
+        The existing transaction as a dictionary, optionally including
+        identity_conflict, or None when no transaction is found.
+    """
     # ---------------------------------------------------------
-    # 1. HASH DO ARQUIVO — PRIMEIRA BARREIRA
+    # 1. FILE HASH — FIRST IDEMPOTENCY CHECK
     # ---------------------------------------------------------
 
     file_hash = transaction_data.get("file_hash")
@@ -82,7 +95,7 @@ def find_existing_transaction(
             return dict(file_hash_row)
 
     # ---------------------------------------------------------
-    # 2. IDENTIFICADORES FINANCEIROS
+    # 2. FINANCIAL IDENTIFIERS
     # ---------------------------------------------------------
 
     pix_transaction_id = transaction_data.get(
@@ -98,7 +111,7 @@ def find_existing_transaction(
     pix_row = None
     provider_row = None
 
-    # Busca pelo ID Pix
+    # Look up the Pix transaction ID.
     if pix_transaction_id:
         pix_stmt = (
             select(tb_tratoray_transactions)
@@ -112,7 +125,7 @@ def find_existing_transaction(
             pix_stmt
         ).mappings().first()
 
-    # Busca pelo ID do provedor, independentemente do Pix
+    # Look up the provider transaction ID independently of Pix.
     if provider and provider_transaction_id:
         provider_stmt = (
             select(tb_tratoray_transactions)
@@ -129,12 +142,12 @@ def find_existing_transaction(
             provider_stmt
         ).mappings().first()
 
-    # Nenhum identificador encontrado
+    # No matching financial identifier was found.
     if pix_row is None and provider_row is None:
         return None
 
     # ---------------------------------------------------------
-    # 3. IDENTIFICAÇÃO DE CONFLITOS
+    # 3. IDENTITY CONFLICT DETECTION
     # ---------------------------------------------------------
 
     existing = dict(
@@ -143,14 +156,14 @@ def find_existing_transaction(
 
     identity_conflict = False
 
-    # Caso A:
-    # Pix e ID do provedor apontam para registros diferentes.
+    # Case A:
+    # Pix and provider identifiers point to different records.
     if pix_row is not None and provider_row is not None:
         if pix_row["id"] != provider_row["id"]:
             identity_conflict = True
 
-    # Caso B:
-    # ID Pix informado diverge do ID Pix armazenado.
+    # Case B:
+    # The incoming Pix ID differs from the stored Pix ID.
     if (
         pix_transaction_id
         and existing["pix_transaction_id"]
@@ -158,8 +171,8 @@ def find_existing_transaction(
         if pix_transaction_id != existing["pix_transaction_id"]:
             identity_conflict = True
 
-    # Caso C:
-    # Identidade do provedor informada diverge da armazenada.
+    # Case C:
+    # The incoming provider identity differs from the stored identity.
     if provider and provider_transaction_id:
         if (
             existing["provider"]
@@ -172,7 +185,7 @@ def find_existing_transaction(
             ):
                 identity_conflict = True
 
-    # Campo calculado, não persistido no SQLite
+    # Calculated field; not persisted in SQLite.
     existing["identity_conflict"] = identity_conflict
 
     return existing
@@ -181,6 +194,12 @@ def insert_new_transaction(
     transaction_data: dict,
     db_connection: Connection,
 ) -> int:
+    """Insert a transaction and return its generated local ID.
+
+    The caller is responsible for managing the database transaction.
+    Database constraint violations are propagated to the caller.
+    """
+
     insert_stmt = insert(tb_tratoray_transactions).values(transaction_data)
     
     result = db_connection.execute(insert_stmt)
@@ -193,6 +212,12 @@ def mark_transaction_as_processed(
     transaction_id: int,
     db_connection: Connection,
 ) -> bool:
+    """Mark a transaction as processed only if it is still processing.
+
+    Returns:
+        True if exactly one transaction was updated; otherwise False.
+    """
+
     update_stmt = (
         update(tb_tratoray_transactions)
         .where(tb_tratoray_transactions.c.id == transaction_id)
@@ -208,7 +233,15 @@ def find_pending_transaction_by_tiny_id(
     id_tiny: int,
     db_connection: Connection,
 ) -> dict | None:
-    """Find an inconclusive settlement linked to a Tiny account."""
+    """Find a processing transaction associated with a Tiny account.
+
+    A pending transaction must be investigated before another settlement
+    can be requested for the same account.
+
+    Returns:
+        The pending transaction as a dictionary, or None if not found.
+    """
+
     stmt = (
         select(tb_tratoray_transactions)
         .where(tb_tratoray_transactions.c.id_tiny == id_tiny)
@@ -218,4 +251,3 @@ def find_pending_transaction_by_tiny_id(
     row = db_connection.execute(stmt).mappings().first()
 
     return dict(row) if row is not None else None
-

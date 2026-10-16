@@ -2,15 +2,20 @@ from google.cloud import vision
 
 
 def extract_text_from_image(file_path: str) -> str:
-    """
-    Extracts text from an image file using Google Cloud Vision API.
+    """Extract receipt text using Google Cloud Vision OCR.
+
+    Send the image content to the document text detection API.
 
     Args:
-        file_path (str): The path to the image file.
+        file_path: Path to the image receipt.
 
     Returns:
-        str: The extracted text from the image.
+        The text recognized by Google Cloud Vision.
+
+    Raises:
+        RuntimeError: If the Vision API reports an error.
     """
+
     with open(file_path, "rb") as file:
         content = file.read()
 

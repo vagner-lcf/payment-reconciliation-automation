@@ -1,5 +1,7 @@
-from src.matching import find_matching_accounts
+from src.matching import find_matching_accounts, calculate_due_date_window
 from decimal import Decimal
+from datetime import date
+
 
 def test_find_one_matching_account():
     # Exemplo de contas a pagar
@@ -33,6 +35,7 @@ def test_find_one_matching_account():
 
     assert matching_accounts[0]["id"] == 2
 
+
 def test_find_zero_matching_account():
     # Exemplo de contas a pagar
     contas = {"itens": [
@@ -62,6 +65,7 @@ def test_find_zero_matching_account():
     matching_accounts = find_matching_accounts(contas, payment["beneficiary_document"], payment["amount"])
 
     assert matching_accounts == []
+
 
 def test_find_multiple_matching_accounts():
     # Exemplo de contas a pagar
@@ -95,6 +99,7 @@ def test_find_multiple_matching_accounts():
     assert matching_accounts[0]["id"] == 1
     assert matching_accounts[1]["id"] == 3
 
+
 def test_empty_document_does_not_match():
     # Exemplo de contas a pagar
     contas = {"itens": [
@@ -125,6 +130,7 @@ def test_empty_document_does_not_match():
 
     assert matching_accounts == []
 
+
 def test_find_one_float_matching_account():
     # Exemplo de contas a pagar
     contas = {"itens": [
@@ -145,6 +151,7 @@ def test_find_one_float_matching_account():
 
     assert len(matching_accounts) == 1
     assert matching_accounts[0]["id"] == 1
+
 
 def test_unique_match_with_same_document_and_amount():
     beneficiary_document = "11.111.111/0001-11"
@@ -178,6 +185,7 @@ def test_unique_match_with_same_document_and_amount():
 
     assert len(matching_accounts) == 1
     assert matching_accounts[0]["id"] == 100001
+
 
 def test_multiple_accounts_with_same_document_and_amount():
     beneficiary_document = "22.222.222/0001-22"
@@ -215,6 +223,7 @@ def test_multiple_accounts_with_same_document_and_amount():
         200002,
     }
 
+
 def test_different_supplier_names_do_not_prevent_document_match():
     beneficiary_document = "33.333.333/0001-33"
 
@@ -240,6 +249,7 @@ def test_different_supplier_names_do_not_prevent_document_match():
     assert len(matching_accounts) == 1
     assert matching_accounts[0]["id"] == 300001
 
+
 def test_find_matching_accounts_with_formatted_cnpj():
     accounts_payable_data = {
         "itens": [
@@ -259,3 +269,24 @@ def test_find_matching_accounts_with_formatted_cnpj():
 
     assert len(result) == 1
     assert result[0]["id"] == 123
+
+
+def test_default_due_date_window_is_ten_days():
+    result = calculate_due_date_window(date(2026, 10, 16))
+
+    assert result == ("2026-10-06", "2026-10-26")
+
+
+def test_due_date_window_allows_explicit_override():
+    result = calculate_due_date_window(
+        date(2026, 10, 16),
+        range_days=5,
+    )
+
+    assert result == ("2026-10-11", "2026-10-21")
+
+
+def test_due_date_window_handles_month_boundaries():
+    result = calculate_due_date_window(date(2026, 3, 3))
+
+    assert result == ("2026-02-21", "2026-03-13")

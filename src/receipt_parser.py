@@ -7,6 +7,28 @@ def extract_receipt_data(
     text: str,
     source_type: str = "pdf",
 ) -> dict:
+    """Extract structured payment information from receipt text.
+
+    Identify the provider and payment type, then extract payment details
+    using the rules applicable to PDF or OCR-based image receipts.
+
+    For supported boleto image layouts, the payment amount is accepted
+    only when an OCR candidate matches the amount encoded in the barcode.
+
+    Unknown image layouts and Pix transfers do not have their payment
+    amount inferred automatically.
+
+    Args:
+        text: Text extracted from the payment receipt.
+        source_type: Receipt source, either "pdf" or "image".
+
+    Returns:
+        A dictionary containing payment details, transaction identifiers,
+        receipt layout, barcode data, and amount validation information.
+
+    Raises:
+        ValueError: If source_type is unsupported.
+    """
 
     if source_type not in ("pdf", "image"):
         raise ValueError(
@@ -22,7 +44,7 @@ def extract_receipt_data(
     amount_matches_barcode = None
 
     if source_type == "pdf":
-        # Preserva integralmente a extração de valores dos PDFs.
+        # Keep the existing PDF amount extraction rules.
         amount = extract_amount(text, payment_type)
 
     else:
@@ -50,8 +72,8 @@ def extract_receipt_data(
                 amount = None
 
         else:
-            # Pix transferência e layouts desconhecidos:
-            # não inferir um valor automaticamente.
+            # Pix transfers and unknown layouts:
+            # Do not infer an amount automatically.
             amount = None
 
     if source_type == "image":
@@ -97,23 +119,27 @@ def extract_receipt_data(
 
 
 def identify_provider(text: str) -> str:
+    """Identify the payment provider from supported receipt text patterns."""
+
     text_clean = text.lower()
 
-    # Verifica qualquer uma das variações em uma linha
+    # Check supported provider name variations.
     if any(provider in text_clean for provider in ["mercadopago", "mercado pago"]):
         return "mercado_pago"
 
     return "unknown"
 
 def identify_payment_type(text: str) -> str:
+    """Classify the receipt as Pix, boleto, or unknown."""
+
     text_clean = text.lower()
 
-    # 1. Checa por PIX primeiro (é mais específico)
+    # Check Pix first because its keywords are more specific.
     pix_keywords = ["comprovante de pix", "transação pix", "pagamento pix"]
     if any(keyword in text_clean for keyword in pix_keywords):
         return "pix"
 
-    # 2. Checa por Boleto
+    # Check boleto keywords.
     boleto_keywords = [
         "comprovante de pagamento de boleto",
         "pagamento de boleto",
@@ -128,6 +154,15 @@ def identify_payment_type(text: str) -> str:
 
 
 def identify_receipt_layout(text: str) -> str:
+    """Identify a supported Mercado Pago receipt layout.
+
+    Returns:
+        "mp_pag_bol" for boleto payments,
+        "mp_pix_bol" for Pix boleto payments,
+        "mp_pix_tra" for Pix transfers, or
+        "unknown" when no supported layout is identified.
+    """
+
     text_clean = " ".join(text.lower().split())
 
     if (
@@ -151,6 +186,8 @@ def identify_receipt_layout(text: str) -> str:
 
 
 def extract_barcode(text: str) -> str | None:
+    """Extract a numeric barcode with a supported length from OCR text."""
+
     match = re.search(
         r"(?:código de barras|codbarra)[ \t]*\n((?:[0-9. \t]+\n?)+)",
         text,
@@ -168,6 +205,16 @@ def extract_barcode(text: str) -> str | None:
     return barcode
 
 def extract_barcode_amount(barcode: str) -> Decimal | None:
+    """Extract the encoded payment amount from a numeric barcode.
+
+    Support the barcode lengths and value encoding formats currently
+    handled by the receipt parser.
+
+    Returns:
+        The encoded amount as Decimal, or None when the barcode
+        format is unsupported or does not contain a usable amount.
+    """
+
     if not barcode.isdecimal():
         return None
 
@@ -196,9 +243,15 @@ def extract_barcode_amount(barcode: str) -> Decimal | None:
 
 
 def extract_amount(
-        text: str ,
-        payment_type: str,
-    )-> Decimal | None:
+    text: str ,
+    payment_type: str,
+)-> Decimal | None:
+    """Extract the paid amount from supported PDF receipt layouts.
+
+    Returns:
+        The payment amount as Decimal, or None if no supported
+        amount pattern is found.
+    """
 
     if payment_type == "boleto":
         match = re.search(r"Total pago\s*R\$\s*([\d.,]+)", text)
@@ -224,6 +277,13 @@ def extract_ocr_amount_candidates(
     text: str,
     receipt_layout: str,
 ) -> set[Decimal]:
+    """Extract possible payment amounts from supported OCR layouts.
+
+    Returns:
+        A set of Decimal candidates extracted from the receipt text,
+        or an empty set when no supported amount is found.
+    """
+
     if receipt_layout not in ("mp_pix_bol", "mp_pag_bol", "mp_pix_tra"):
         return set()
 
@@ -239,6 +299,15 @@ def extract_ocr_amount_candidates(
     return parse_ocr_amount_candidates(match.group(1))
 
 def parse_ocr_amount_candidates(raw_amount: str) -> set[Decimal]:
+    """Interpret OCR amount text, including superscript cent digits.
+
+    When explicit superscript cents are present, construct one amount.
+    Otherwise, return both whole-unit and cent-based interpretations.
+
+    Returns:
+        A set of possible Decimal amounts.
+    """
+
     superscript_digits = "⁰¹²³⁴⁵⁶⁷⁸⁹"
     translation = str.maketrans(
     "⁰¹²³⁴⁵⁶⁷⁸⁹",
@@ -293,6 +362,12 @@ MONTHS_PT_BR = {
 
 
 def extract_ocr_payment_date(text: str) -> date | None:
+    """Extract a payment date from supported Portuguese OCR date formats.
+
+    Returns:
+        The parsed payment date, or None if no valid date is found.
+    """
+
     date_patterns = [
         # Example: 13 de outubro de 2026
         r"\b(\d{1,2})\s+de\s+([a-zçãéêíóôú]+)\s+de\s+(\d{4})\b",
@@ -324,6 +399,8 @@ def extract_ocr_payment_date(text: str) -> date | None:
     return None
 
 def extract_payment_date(text: str, payment_type: str) -> date | None:
+    """Extract the payment date from supported PDF receipt formats."""
+
     if payment_type == "boleto":
         match_boleto = re.search(r"Data do pagamento\s*(\d{2}/\d{2}/\d{4})", text)
 
@@ -368,6 +445,15 @@ def extract_ocr_beneficiary_document(
     text: str,
     receipt_layout: str,
 ) -> str | None:
+    """Extract the beneficiary CPF/CNPJ from a supported OCR layout.
+
+    For Pix layouts, use the destination document rather than the
+    origin document. Reject masked or incomplete identifiers.
+
+    Returns:
+        The beneficiary document, or None if it cannot be extracted
+        reliably.
+    """
 
     if receipt_layout == "mp_pag_bol":
         match = re.search(
@@ -413,6 +499,8 @@ def extract_ocr_beneficiary_document(
     return document
 
 def extract_beneficiary_document(text: str, payment_type: str) -> str | None:
+    """Extract the beneficiary CPF/CNPJ from supported PDF receipts."""
+
     if payment_type == "boleto":
         match = re.search(r"Beneficiário.*?CPF/CNPJ\s*([\d./-]+)", text, re.DOTALL)
 
@@ -426,6 +514,8 @@ def extract_beneficiary_document(text: str, payment_type: str) -> str | None:
     return None
 
 def extract_pix_transaction_id(text: str, payment_type: str) -> str | None:
+    """Extract the Pix transaction identifier when available."""
+
     if payment_type == "pix":
         match = re.search(r"ID d[ae] transação Pix\s*([A-Za-z0-9]+)", text)
 
@@ -434,6 +524,8 @@ def extract_pix_transaction_id(text: str, payment_type: str) -> str | None:
     return None
 
 def extract_boleto_transaction_id(text: str, payment_type: str) -> str | None:
+    """Extract the boleto transaction identifier when available."""
+
     if payment_type == "boleto":
         match = re.search(r"Comprovante de transação\s*#([0-9]+)", text)
 
@@ -442,6 +534,8 @@ def extract_boleto_transaction_id(text: str, payment_type: str) -> str | None:
     return None
 
 def extract_ocr_mp_operation_id(text: str) -> str | None:
+    """Extract the Mercado Pago operation identifier from OCR text."""
+
     match = re.search(
         r"N\.\s*°\s*de operação de Mercado Pago\s*\n\s*(\d{12})\b",
         text,
