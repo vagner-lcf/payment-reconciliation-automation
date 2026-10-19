@@ -4,7 +4,7 @@ Projeto em Python desenvolvido a partir de uma necessidade operacional real de u
 
 A solução integra extração de dados de comprovantes, regras determinísticas de conciliação, API do Tiny/Olist ERP e persistência local para reduzir conferências repetitivas e controlar o risco de processamento duplicado.
 
-> **Estado atual:** núcleo de processamento local implementado e validado em cenários controlados. Integração Telegram e operação contínua ainda não concluídas. A baixa financeira permanece **desabilitada por padrão**.
+> **Estado atual (19/10/2026):** núcleo de conciliação e adaptador Telegram implementados, com testes automatizados e validação local em **dry-run**. A instalação, o aceite operacional e a habilitação de baixas financeiras automáticas no cliente permanecem pendentes. O Telegram publicado **não solicita baixas**.
 
 ## Funcionalidades implementadas
 
@@ -15,7 +15,8 @@ A solução integra extração de dados de comprovantes, regras determinísticas
 - **Matching determinístico:** correspondência por CPF/CNPJ completo, saldo em aberto igual ao valor pago e vencimento dentro de uma janela padrão de **±10 dias corridos** em relação à data do pagamento. Apenas uma correspondência única pode avançar.
 - **Controle de duplicidade:** registro em SQLite e verificação por hash do arquivo e identificadores financeiros, quando disponíveis.
 - **Tratamento de incerteza:** transações ambíguas, incompletas ou com resultado remoto inconclusivo são direcionadas para revisão ou verificação, sem repetição automática de uma baixa.
-- **Retorno estruturado:** a função principal devolve um dicionário com status, mensagem e campos de diagnóstico para futuras interfaces de operação.
+- **Retorno estruturado:** a função principal devolve um dicionário com status, mensagem e campos de diagnóstico para interfaces de operação.
+- **Integração Telegram:** bot por long polling, grupo e remetentes autorizados, recebimento de PDF/JPG/JPEG/PNG, validação de formato, limite de 10 MB, arquivos temporários descartáveis e respostas resumidas sem documentos financeiros.
 
 ## Escopo e limitações do MVP
 
@@ -79,6 +80,7 @@ A orquestração está em `src/main.py`. A consulta e a baixa financeira são op
 | Tiny/Olist ERP API v3 | Consulta de contas a pagar e integração financeira |
 | SQLAlchemy + SQLite | Persistência local, estados e controle de duplicidade |
 | `python-dotenv` | Carregamento de configuração local |
+| `python-telegram-bot` | Recepção e resposta a comprovantes em grupo privado do Telegram |
 | `pytest` | Testes automatizados |
 
 As decisões de correspondência e elegibilidade são implementadas por regras explícitas, não por um modelo de IA que decide autonomamente se uma conta deve ser baixada.
@@ -90,7 +92,7 @@ As decisões de correspondência e elegibilidade são implementadas por regras e
 Clone o repositório e entre no diretório do projeto:
 
 ```bash
-git clone <URL_DO_REPOSITORIO>
+git clone https://github.com/vagner-lcf/payment-reconciliation-automation.git
 cd payment-reconciliation-automation
 ```
 
@@ -102,12 +104,15 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na raiz do projeto com as variáveis utilizadas pelo fluxo OAuth:
+Copie `.env.example` para `.env` e preencha as variáveis do fluxo OAuth e, se utilizar o bot, as configurações do Telegram:
 
 ```dotenv
 OLIST_CLIENT_ID=<seu_client_id>
 OLIST_CLIENT_SECRET=<seu_client_secret>
-OLIST_REDIRECT_URI=<sua_uri_de_redirecionamento_local>
+OLIST_REDIRECT_URI=http://localhost:8000/callback
+TELEGRAM_BOT_TOKEN=<token_do_bot>
+TELEGRAM_ALLOWED_CHAT_ID=<id_do_grupo_privado>
+TELEGRAM_ALLOWED_USER_IDS=<id_usuario_1>,<id_usuario_2>
 ```
 
 A URI de redirecionamento deve corresponder à cadastrada no aplicativo OAuth e à configuração do callback local, que utiliza a porta `8000`. **Não compartilhe valores reais dessas variáveis.**
@@ -122,7 +127,7 @@ python -m src.authorize_tiny
 
 O navegador será aberto para a autorização. Os tokens retornados são armazenados localmente em `data/tiny_tokens.json`, ignorado pelo Git. O sistema tenta renovar o acesso automaticamente; caso a autorização seja revogada ou a renovação falhe, é necessária nova autorização manual.
 
-> **Segurança:** os tokens persistidos em arquivo não são criptografados pelo projeto. Restrinja o acesso ao computador e à pasta de execução. O arquivo `.env.example` ainda não foi criado; os nomes de variáveis acima foram conferidos diretamente em `src/auth.py`.
+> **Segurança:** os tokens persistidos em arquivo não são criptografados pelo projeto. Restrinja o acesso ao computador e à pasta de execução. O arquivo `.env.example` contém somente valores fictícios. O `.env` real e o diretório `data/` estão ignorados pelo Git.
 
 ## Execução em modo seguro
 
@@ -145,6 +150,22 @@ print(result["message"])
 O caminho acima é **ilustrativo**: substitua-o por um comprovante de teste existente. A execução em `dry_run` **não solicita a baixa**, mas ainda pode acessar a API do Tiny, consumir OCR pago no caso de imagens e registrar informações no SQLite local.
 
 **Não habilite `settlement_enabled=True` em ambiente financeiro real apenas para experimentar.** A operação contínua depende da conclusão dos testes de segurança, procedimentos de recuperação e autorização do responsável.
+
+## Operação pelo Telegram (dry-run)
+
+Execute a partir da raiz do projeto, após configurar `.env` e concluir a autorização inicial do Tiny:
+
+```powershell
+python -m src.telegram_bot
+```
+
+O bot utiliza **long polling**: mantenha **apenas uma instância** em execução. Ele recebe fotos ou documentos PDF, JPG, JPEG e PNG de remetentes autorizados no grupo privado. A autorização exige simultaneamente `TELEGRAM_ALLOWED_CHAT_ID` e o ID do remetente em `TELEGRAM_ALLOWED_USER_IDS` (separados por vírgula). Outros tipos de mensagem não são processados.
+
+O adaptador limita o tamanho a **10 MB**, confere extensão e MIME de documentos e valida a assinatura inicial do arquivo após o download. Os arquivos são armazenados temporariamente e descartados após o processamento. O núcleo é executado em thread auxiliar, com bloqueio para serializar conciliações dentro da instância. Não há fila durável nem garantia de recuperação de mensagens após queda de energia ou reinício.
+
+**Restrição atual:** a chamada ao núcleo usa `settlement_enabled=False` de forma fixa. A variável `SETTLEMENT_ENABLED` **não existe** nesta versão. Em produção homologada, a configuração da autorização de baixa deverá ser implementada e testada separadamente; não basta alterar o `.env` atual. A usuária operacional não precisará liberar cada comprovante depois que o fluxo autorizado estiver implantado.
+
+As respostas do bot não reproduzem o dicionário financeiro completo, mas o mapeamento atual utiliza principalmente `status`; alguns motivos (`reason`), como indisponibilidade de autenticação ou conta com baixa pendente, ainda requerem tratamento operacional mais específico.
 
 ## Resultados e estados do processamento
 
@@ -173,7 +194,7 @@ O campo `reason` complementa determinados resultados. Os campos de documento e i
 - **Confirmação remota:** a baixa só é considerada confirmada quando o estado da conta é consultado novamente no ERP.
 - **Falhas inconclusivas:** timeout ou erro após solicitar uma baixa **não prova que ela não ocorreu**. A recuperação deve verificar o Tiny e o registro local, sem repetir automaticamente o POST financeiro.
 
-Ainda estão pendentes a validação completa do contrato financeiro da API em cenários de falha, procedimentos operacionais de recuperação, controle de acesso do futuro bot e revisão dos dados apresentados em logs e mensagens.
+Ainda estão pendentes a validação completa do contrato financeiro da API em cenários de falha, procedimentos operacionais de recuperação, testes de acesso com os usuários finais e revisão dos dados apresentados em logs e mensagens. O `main()` ainda possui saídas `print()` potencialmente sensíveis; o bot não deve repassá-las ao grupo.
 
 ## Testes
 
@@ -185,7 +206,7 @@ python -m pytest -q
 
 Os testes cobrem componentes como extração, parsing, matching, integração simulada e persistência. O desenvolvimento também incluiu validações pontuais com documentos e contas reais, em condições controladas.
 
-**Referência de desenvolvimento:** 162 testes aprovados na execução local informada pelo desenvolvedor até a última consolidação do projeto. Esse número não representa uma execução independente durante a elaboração deste README e deve ser atualizado conforme a suíte evoluir.
+**Referência de desenvolvimento (19/10/2026):** 183 testes aprovados na execução local informada pelo desenvolvedor. O resultado não representa uma execução independente desta auditoria.
 
 ## Estrutura do projeto
 
@@ -193,6 +214,7 @@ Os testes cobrem componentes como extração, parsing, matching, integração si
 payment-reconciliation-automation/
 ├── src/
 │   ├── main.py                     # Orquestração do processamento
+│   ├── telegram_bot.py             # Interface Telegram em dry-run
 │   ├── receipt_parser.py           # Extração estruturada dos dados
 │   ├── pdf_text_extractor.py       # Leitura de PDF
 │   ├── image_text_extractor.py     # OCR de imagens
@@ -216,6 +238,6 @@ A estrutura apresenta os principais componentes, não uma listagem exaustiva. Ar
 
 ## Estado atual e próximos passos
 
-O núcleo de conciliação local está implementado. As próximas etapas previstas são a integração com Telegram em modo seguro, a validação da experiência de uso, o endurecimento dos controles operacionais e financeiros e a medição de resultados no processo real.
+O núcleo e a integração Telegram em dry-run estão implementados. As próximas etapas são validar a operação e a recuperação de falhas no ambiente do cliente, revisar os retornos operacionais, conferir o contrato financeiro do Tiny e implementar a habilitação explícita de baixas somente após homologação. A instalação contínua, a transferência de controle do bot e a medição dos resultados reais permanecem pendentes.
 
 A eventual publicação deste repositório dependerá de uma revisão de confidencialidade e da autorização para divulgar o projeto como case profissional. Esta documentação não implica autorização para executar baixas financeiras em produção.
