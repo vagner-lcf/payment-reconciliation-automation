@@ -1,10 +1,14 @@
 from decimal import Decimal
 from pathlib import Path
 from datetime import date
+import logging
+from uuid import uuid4
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.token_manager import get_valid_access_token
+
+from src.logging_config import configure_logging
 
 from src.matching import (
     calculate_due_date_window,
@@ -178,6 +182,19 @@ def main(file_path: str, settlement_enabled: bool = False):
     """
 
     # ---------------------------------------------------------
+    # LOGGING CONFIGURATION
+    # ---------------------------------------------------------
+
+    logger = logging.getLogger("payment_reconciliation")
+    run_id = uuid4().hex[:8]
+
+    logger.info(
+        "processing_started run_id=%s settlement_enabled=%s",
+        run_id,
+        settlement_enabled,
+    )
+
+    # ---------------------------------------------------------
     # LOCAL DATABASE SETUP
     # ---------------------------------------------------------
     create_tables(engine)
@@ -219,6 +236,22 @@ def main(file_path: str, settlement_enabled: bool = False):
         id_tiny: int | None = None,
         reason: str | None = None,
     ) -> dict:
+
+        log_level = (
+            logging.WARNING
+            if status in ("error", "verification_pending", "review_required",
+                          "already_in_review", "ambiguous_match")
+            else logging.INFO
+        )
+
+        logger.log(
+            log_level,
+            "processing_finished run_id=%s status=%s reason=%s",
+            run_id,
+            status,
+            reason,
+        )
+
         print(message)
 
         return make_result(
@@ -668,8 +701,10 @@ def main(file_path: str, settlement_enabled: bool = False):
     )
 
 if __name__ == "__main__":
+    configure_logging()
+    
     main(
-        file_path="data/input/pix_bol_2.jpeg",
+        file_path="data/input/pix_tra_2.jpeg",
         settlement_enabled=False,
     )
 
