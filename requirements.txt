@@ -4,3 +4,4 @@ python-dotenv==1.2.3
 requests==2.34.2
 SQLAlchemy==2.0.54
 pytest==9.1.1
+python-telegram-bot==22.8

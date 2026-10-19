@@ -22,7 +22,10 @@ __pycache__/
 # ==========================================
 .env
 .env.*
-!.env.example     # Allow committing an example template file
+
+# Allow committing an example template file
+!.env.example
+
 *.pem
 *.key
 secrets.json

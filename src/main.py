@@ -707,5 +707,3 @@ if __name__ == "__main__":
         file_path="data/input/pix_tra_2.jpeg",
         settlement_enabled=False,
     )
-
-
