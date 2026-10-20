@@ -30,16 +30,64 @@ ALLOWED_MIME_TYPES = {
 }
 
 RESULT_MESSAGES = {
-    "dry_run": "Conta correspondente localizada. Nenhuma baixa foi realizada.",
-    "already_processed": "Transação já processada anteriormente.",
-    "already_in_review": "Transação já registrada para revisão manual.",
-    "review_required": "Comprovante encaminhado para revisão manual.",
-    "no_match": "Nenhuma conta correspondente foi localizada.",
-    "ambiguous_match": "Múltiplas contas encontradas. Conferência manual necessária.",
-    "verification_pending": "Não foi possível confirmar o estado da transação. Verificação manual necessária.",
-    "processed": "Transação identificada como processada.",
-    "error": "O processamento não pôde ser concluído.",
+    "dry_run": "⚠️ Conta localizada. Nenhuma baixa realizada (modo de teste).",
+    "already_processed": "✅ Comprovante já processado e baixado anteriormente no Tiny.",
+    "already_in_review": "⚠️ Comprovante já registrado para revisão manual.",
+    "review_required": "⚠️ Comprovante requer conferência manual. Nenhuma nova baixa realizada.",
+    "no_match": "❌ Nenhuma conta correspondente encontrada no Tiny. Nenhuma baixa realizada.",
+    "ambiguous_match": "⚠️ Mais de uma conta correspondente encontrada. Nenhuma baixa realizada. Confira no Tiny.",
+    "verification_pending": "⚠️ Não foi possível confirmar a baixa. Confira no Tiny antes de tentar novamente.",
+    "processed": "✅ Baixa realizada com sucesso no Tiny.",
+    "error": "❌ O processamento não pôde ser concluído.",
 }
+
+
+def format_result_message(result: dict) -> str:
+    """Format a reconciliation result for Telegram users."""
+
+    status = result.get("status", "error")
+    message = RESULT_MESSAGES.get(
+        status,
+        "❌ Resultado não reconhecido. Verifique o sistema.",
+    )
+
+    if (
+        status == "review_required"
+        and result.get("reason") == "unsupported_payment_type"
+    ):
+        message = (
+            "⚠️ Transferência via Pix identificada. "
+            "Este tipo de comprovante não é elegível para "
+            "baixa automática. Confira manualmente no Tiny. "
+            "Nenhuma baixa realizada."
+        )
+
+    details = []
+
+    document = result.get("beneficiary_document")
+    if document:
+        details.append(f"CPF/CNPJ: {document}")
+
+    amount = result.get("amount")
+    if amount is not None:
+        formatted_amount = f"{amount:,.2f}"
+        formatted_amount = (
+            formatted_amount.replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+        details.append(f"Valor: R$ {formatted_amount}")
+
+    payment_date = result.get("payment_date")
+    if payment_date:
+        details.append(
+            f"Data do pagamento: {payment_date:%d/%m/%Y}"
+        )
+
+    if details:
+        return message + "\n\n" + "\n".join(details)
+
+    return message
 
 
 def load_access_config() -> tuple[int, set[int]]:
@@ -57,6 +105,19 @@ def load_access_config() -> tuple[int, set[int]]:
         raise ValueError("No allowed Telegram users configured.")
 
     return chat_id, user_ids
+
+
+def load_settlement_config() -> bool:
+    """Load the settlement mode from the environment."""
+
+    value = os.getenv("SETTLEMENT_ENABLED", "false").strip().lower()
+
+    if value not in ("true", "false"):
+        raise ValueError(
+            "SETTLEMENT_ENABLED must be 'true' or 'false'."
+        )
+
+    return value == "true"
 
 
 def is_authorized(
@@ -124,7 +185,7 @@ async def handle_attachment(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Validate, download, and reconcile one receipt without financial settlement."""
+    """Validate, download, and reconcile one receipt using the configured settlement mode."""
 
     message = update.effective_message
 
@@ -212,7 +273,7 @@ async def handle_attachment(
                 result = await asyncio.to_thread(
                     reconcile_receipt,
                     str(file_path),
-                    settlement_enabled=False,
+                    settlement_enabled=context.application.bot_data["settlement_enabled"],
                 )
 
             status = result.get("status", "error")
@@ -223,10 +284,7 @@ async def handle_attachment(
             )
 
             await message.reply_text(
-                RESULT_MESSAGES.get(
-                    status,
-                    "Resultado não reconhecido. Verifique o sistema.",
-                )
+                format_result_message(result)
             )
 
         except Exception as exc:
@@ -250,11 +308,13 @@ def main() -> None:
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     allowed_chat_id, allowed_user_ids = load_access_config()
+    settlement_enabled = load_settlement_config()
 
     application = ApplicationBuilder().token(token).build()
 
     application.bot_data["allowed_chat_id"] = allowed_chat_id
     application.bot_data["allowed_user_ids"] = allowed_user_ids
+    application.bot_data["settlement_enabled"] = settlement_enabled
     application.bot_data["processing_lock"] = asyncio.Lock()
 
     application.add_handler(

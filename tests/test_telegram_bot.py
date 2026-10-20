@@ -2,6 +2,8 @@
 import asyncio
 import threading
 import time
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +15,8 @@ from src.telegram_bot import (
     handle_attachment,
     is_authorized,
     has_valid_file_signature,
+    format_result_message,
+    load_settlement_config,
 )
 
 
@@ -52,6 +56,7 @@ def make_context():
             "allowed_chat_id": -5534421269,
             "allowed_user_ids": {1911810420},
             "processing_lock": asyncio.Lock(),
+            "settlement_enabled": False,
         }
     )
 
@@ -127,9 +132,14 @@ def test_oversized_file_never_downloads():
     mock_reconcile.assert_not_called()
 
 
-def test_valid_receipt_runs_in_dry_run_and_cleans_up():
+@pytest.mark.parametrize("settlement_enabled", [False, True])
+def test_valid_receipt_uses_configured_settlement_mode_and_cleans_up(
+    settlement_enabled,
+):
     update = make_update()
     context = make_context()
+
+    context.application.bot_data["settlement_enabled"] = settlement_enabled
 
     telegram_file = MagicMock()
     telegram_file.file_size = 1024
@@ -171,7 +181,7 @@ def test_valid_receipt_runs_in_dry_run_and_cleans_up():
     mock_reconcile.assert_called_once()
 
     assert mock_reconcile.call_args.kwargs == {
-        "settlement_enabled": False,
+        "settlement_enabled": settlement_enabled,
     }
 
     assert len(processed_paths) == 1
@@ -179,7 +189,7 @@ def test_valid_receipt_runs_in_dry_run_and_cleans_up():
     assert not processed_paths[0].parent.exists()
 
     update.effective_message.reply_text.assert_awaited_once_with(
-        "Conta correspondente localizada. Nenhuma baixa foi realizada."
+        "⚠️ Conta localizada. Nenhuma baixa realizada (modo de teste)."
     )
 
 
@@ -399,3 +409,85 @@ def test_receipts_are_processed_sequentially():
 
     first_update.effective_message.reply_text.assert_awaited_once()
     second_update.effective_message.reply_text.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "reason,expected_message",
+    [
+        (
+            "unsupported_payment_type",
+            "⚠️ Transferência via Pix identificada.",
+        ),
+        (
+            "identity_conflict",
+            "⚠️ Comprovante requer conferência manual.",
+        ),
+        (
+            "account_has_pending_transaction",
+            "⚠️ Comprovante requer conferência manual.",
+        ),
+    ],
+)
+def test_review_message_respects_reason(reason, expected_message):
+    result = {
+        "status": "review_required",
+        "reason": reason,
+        "beneficiary_document": None,
+        "amount": None,
+        "payment_date": date(2026, 10, 13),
+    }
+
+    message = format_result_message(result)
+
+    assert message.startswith(expected_message)
+    assert "Data do pagamento: 13/10/2026" in message
+    assert "CPF/CNPJ:" not in message
+    assert "Valor:" not in message
+
+
+def test_review_message_formats_available_payment_details():
+    result = {
+        "status": "review_required",
+        "reason": "unsupported_payment_type",
+        "beneficiary_document": "21035489000107",
+        "amount": Decimal("1179.06"),
+        "payment_date": date(2026, 10, 15),
+    }
+
+    message = format_result_message(result)
+
+    assert "⚠️ Transferência via Pix identificada." in message
+    assert "CPF/CNPJ: 21035489000107" in message
+    assert "Valor: R$ 1.179,06" in message
+    assert "Data do pagamento: 15/10/2026" in message
+    assert "Nenhuma baixa realizada." in message
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("false", False),
+        ("FALSE", False),
+        (" true ", True),
+    ],
+)
+def test_load_settlement_config(monkeypatch, value, expected):
+    monkeypatch.setenv("SETTLEMENT_ENABLED", value)
+
+    assert load_settlement_config() is expected
+
+
+def test_settlement_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("SETTLEMENT_ENABLED", raising=False)
+
+    assert load_settlement_config() is False
+
+
+@pytest.mark.parametrize("value", ["yes", "1", "enabled", ""])
+def test_invalid_settlement_config(monkeypatch, value):
+    monkeypatch.setenv("SETTLEMENT_ENABLED", value)
+
+    with pytest.raises(ValueError, match="SETTLEMENT_ENABLED"):
+        load_settlement_config()

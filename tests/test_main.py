@@ -284,6 +284,14 @@ def test_main_blocks_ineligible_images_before_tiny(
     assert result["status"] == "review_required"
     assert result["transaction_id"] == 42
 
+    expected_reason = (
+        "unsupported_payment_type"
+        if receipt_layout == "mp_pix_tra"
+        else "ineligible_receipt"
+    )
+
+    assert result["reason"] == expected_reason
+
 
 @pytest.mark.parametrize(
     "missing_field",

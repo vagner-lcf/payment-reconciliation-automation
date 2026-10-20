@@ -374,6 +374,11 @@ def main(file_path: str, settlement_enabled: bool = False):
                     f"ID local: {transaction_id}"
                 ),
                 transaction_id=transaction_id,
+                reason=(
+                    "unsupported_payment_type"
+                    if payment["receipt_layout"] == "mp_pix_tra"
+                    else "ineligible_receipt"
+                ),
             )
 
 
@@ -704,6 +709,6 @@ if __name__ == "__main__":
     configure_logging()
     
     main(
-        file_path="data/input/pix_tra_2.jpeg",
+        file_path="data/input/test.jpeg",
         settlement_enabled=False,
     )
