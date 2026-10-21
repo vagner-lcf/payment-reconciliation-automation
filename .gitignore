@@ -51,3 +51,4 @@ Thumbs.db          # Windows
 # Local Runtime Data
 # ==========================================
 data/
+/bot.lock

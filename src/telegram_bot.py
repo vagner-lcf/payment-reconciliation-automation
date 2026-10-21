@@ -64,6 +64,10 @@ def format_result_message(result: dict) -> str:
 
     details = []
 
+    transaction_id = result.get("transaction_id")
+    if transaction_id is not None:
+        details.append(f"Referência: {transaction_id}")
+
     document = result.get("beneficiary_document")
     if document:
         details.append(f"CPF/CNPJ: {document}")

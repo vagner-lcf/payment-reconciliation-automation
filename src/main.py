@@ -246,8 +246,9 @@ def main(file_path: str, settlement_enabled: bool = False):
 
         logger.log(
             log_level,
-            "processing_finished run_id=%s status=%s reason=%s",
+            "processing_finished run_id=%s transaction_id=%s status=%s reason=%s",
             run_id,
+            transaction_id,
             status,
             reason,
         )
