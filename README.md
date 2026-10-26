@@ -6,7 +6,7 @@ A Python project developed to address a real operational need: reviewing payment
 
 The solution combines receipt data extraction, deterministic reconciliation rules, Tiny/Olist ERP API integration, and local persistence to reduce repetitive manual checks and mitigate the risk of duplicate processing.
 
-> **Current status — October 26, 2026:** the financial reconciliation core and Telegram integration are implemented, with **198 automated tests passing on the client's computer**. The application was installed on that computer, Tiny OAuth and Google Cloud Vision OCR were validated, and new and duplicate receipts were tested in safe mode. With the financial operator's authorization, **the first real settlement was completed through Telegram**. The previous SQLite history was preserved. The desktop launcher was tested; automatic startup after Windows login was validated locally but **has not yet been validated on the client's computer**. Initial production operation is being monitored.
+> **Current status — October 26, 2026:** the financial reconciliation core and Telegram integration are implemented, with **198 automated tests passing on the client's computer**. The application was installed on that computer, Tiny OAuth and Google Cloud Vision OCR were validated, and new and duplicate receipts were tested in safe mode. With the financial operator's authorization, **the first real settlement was completed through Telegram**. The previous SQLite history was preserved. The desktop launcher was tested, and the client subsequently confirmed that automatic startup after Windows login works on the company's computer. **The agreed MVP scope is complete and the system is in production**, with routine operational monitoring.
 
 ## Implemented Features
 
@@ -218,7 +218,7 @@ Image OCR uses Google Cloud Vision and requires **Application Default Credential
    **Client initialization alone does not confirm** that OCR requests, API enablement, permissions, and billing work. Test a real, authorized image using the project's `src.image_text_extractor.extract_text_from_image()` function and verify the extracted text against the receipt.
 5. Configure budget alerts in Google Cloud Billing and monitor actual usage. **Budget alerts are not a spending cap.** Restrict access to the Windows account and local ADC credentials; never commit or share tokens, credential files, or financial receipts.
 
-The client's Google Cloud project, billing, Vision API, ADC, quota project, and a real OCR request were configured and validated during deployment on **October 26, 2026**. A new-Windows-login validation remains pending.
+The client's Google Cloud project, billing, Vision API, ADC, quota project, and a real OCR request were configured and validated during deployment on **October 26, 2026**. The client subsequently confirmed successful automatic startup after Windows login. OCR was validated during deployment; a separate post-login OCR retest has not been reported.
 
 Official references: [Vision authentication](https://cloud.google.com/vision/docs/authentication) and [ADC for local development](https://cloud.google.com/docs/authentication/set-up-adc-local-dev).
 
@@ -519,7 +519,7 @@ If the system returns `verification_pending` or an interruption during settlemen
 3. Review the local transaction record and logs with the technical maintainer.
 4. Resolve the pending state only after determining the actual financial outcome. If uncertainty remains, keep the operation blocked for verification.
 
-The final procedure for resolving local transaction states must still be validated during the client's operational acceptance testing.
+The recovery procedure above remains the reference for exceptional or inconclusive financial outcomes. Specific recovery scenarios not encountered during deployment should be validated when they arise; this is not a blocker for the completed MVP.
 
 ### Basic Maintenance
 
@@ -595,7 +595,7 @@ However, **calculating an overall automation rate from this batch would be techn
 
 The absence of an account in the ERP prevents automatic settlement even when the receipt has been interpreted correctly.
 
-Functional validation does not replace final verification of settlements in the ERP or operational acceptance testing in the client's target environment.
+Historical functional testing was supplemented by testing and an authorized real settlement in the client's production environment. Individual settlements and exceptional outcomes still require verification in Tiny when appropriate.
 
 ### Windows Operational Tests
 
@@ -609,7 +609,7 @@ The following were also validated locally:
 - Automatic startup after Windows login.
 - Receiving and responding to a receipt after automatic startup.
 
-**Client deployment (October 26, 2026):** installed on the company's computer; 198 automated tests passed there, Tiny authorization and Google Cloud Vision OCR were verified, the desktop launcher worked, and a first authorized real settlement was performed. Automatic startup after a fresh Windows login remains to be tested on that computer. Operation is currently monitored.
+**Client deployment (October 26, 2026):** installed on the company's computer; 198 automated tests passed there, Tiny authorization and Google Cloud Vision OCR were verified, the desktop launcher worked, and a first authorized real settlement was performed. The client subsequently confirmed successful automatic startup after Windows login. **The MVP is delivered and operating in production**, with routine monitoring and support for exceptional cases.
 
 ## Project Structure
 
@@ -649,27 +649,15 @@ The structure highlights the main components rather than providing an exhaustive
 
 The `bot.lock` file, generated at runtime by the Windows controller, is also ignored by Git.
 
-## Current Status and Next Steps
+## MVP Delivery Status and Maintenance
 
-The financial reconciliation core, Telegram integration, and explicit settlement enablement configuration are implemented.
+**Status: MVP completed and deployed to production (October 26, 2026).** The application is installed on the client's computer, its integrations and automated tests were validated there, the financial operator authorized live settlements, and the first real settlement was completed through Telegram. The client subsequently confirmed automatic startup after Windows login.
 
-Functional validation using real receipts and Windows startup preparation have been completed.
+The MVP's agreed scope is delivered. Day-to-day operation remains subject to normal financial controls: verify inconclusive outcomes in Tiny, resolve ineligible cases manually, preserve the local SQLite history, and maintain appropriate access and backups. Responsibilities for ongoing maintenance and backup routines should be kept clear; this is operational stewardship, not unfinished development scope.
 
-The current priority is to finalize MVP delivery, focusing on:
+Persistent queues, Redis, Celery, multiple instances, sophisticated monitoring, dashboards, and new integrations are not requirements of the delivered MVP. Future improvements will be evaluated if recurring operational exceptions or additional business needs justify them.
 
-1. Installing the application on the client's dedicated computer.
-2. Configuring the Python environment and Tiny/Olist ERP, Telegram, and Google Cloud Vision credentials.
-3. Confirming automatic startup and correct operation after a new Windows login.
-4. Verifying a sample of completed settlements directly in Tiny.
-5. Validating operational guidance for inconclusive outcomes and manual review.
-6. Defining responsibilities for operation, updates, credentials, and backups.
-7. Obtaining operational acceptance and final client approval.
-
-Persistent queues, Redis, Celery, multiple instances, sophisticated monitoring, dashboards, and new integrations are not requirements for this delivery.
-
-Future improvements will be evaluated based on needs observed during actual operation, prioritizing reliability, simplicity, and maintainability.
-
-Any publication of this repository as a professional case study is subject to confidentiality review and appropriate authorization. This documentation does not constitute authorization to execute financial settlements in production.
+Any publication of this repository as a professional case study remains subject to confidentiality review and appropriate authorization. This documentation records the client's authorization for the deployed operation; it is **not** general authorization to enable financial settlements in other environments.
 
 ---
 
