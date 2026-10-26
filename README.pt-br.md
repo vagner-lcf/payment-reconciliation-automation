@@ -6,7 +6,7 @@ Projeto em Python desenvolvido a partir de uma necessidade operacional real: con
 
 A solução integra extração de dados de comprovantes, regras determinísticas de conciliação, API do Tiny/Olist ERP e persistência local para reduzir conferências repetitivas e controlar o risco de processamento duplicado.
 
-> **Estado atual — 21/10/2026:** núcleo financeiro e integração Telegram implementados, com **198 testes automatizados aprovados**. O programa passou por uma validação funcional com um lote de 62 comprovantes reais, incluindo baixas confirmadas no Tiny. A inicialização automática no Windows e a proteção contra múltiplas instâncias também foram testadas localmente. **A instalação e a homologação operacional no computador da cliente permanecem pendentes.**
+> **Estado atual — 26/10/2026:** núcleo financeiro e integração Telegram implementados, com **198 testes automatizados aprovados no computador da cliente**. O programa foi instalado nesse computador, com OAuth do Tiny e OCR do Google Cloud Vision validados. Comprovantes novos e repetidos foram testados em modo seguro e, após autorização da responsável financeira, **a primeira baixa real foi realizada pelo Telegram**. O histórico anterior do SQLite foi preservado. O atalho da área de trabalho foi testado; a inicialização automática após login foi validada localmente, mas **ainda não foi testada no computador da cliente**. A operação inicial segue em acompanhamento.
 
 ## Funcionalidades implementadas
 
@@ -197,17 +197,30 @@ O sistema tenta renovar o acesso automaticamente. Caso a autorização seja revo
 
 ### Configuração do Google Cloud Vision
 
-A autenticação deve ser configurada no computador que executará o programa.
+O OCR de imagens utiliza o Google Cloud Vision e exige **Application Default Credentials (ADC)** na conta do Windows que executa o bot. PDFs com texto nativo selecionável não dependem desse serviço.
 
-Na implantação no ambiente da cliente, será necessário:
+1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto sob responsabilidade da empresa, vincule uma conta de faturamento e ative a **Cloud Vision API**.
+2. Instale o [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) no computador em que o programa será executado.
+3. No PowerShell, autentique as credenciais ADC e associe o projeto de cotas/faturamento:
 
-- Configurar o acesso ao Google Cloud Vision em um projeto sob responsabilidade da operação.
-- Validar as credenciais disponíveis para o processo Python.
-- Confirmar o funcionamento do OCR após um novo login no Windows.
-- Acompanhar o consumo da API e configurar alertas de orçamento.
-- Restringir o acesso às credenciais e evitar seu compartilhamento por mensagens.
+   ```powershell
+   gcloud auth application-default login
+   gcloud auth application-default set-quota-project PROJECT_ID
+   ```
 
-A autenticação já foi testada no ambiente local de desenvolvimento. **A configuração definitiva no computador da cliente ainda não foi realizada.**
+   Substitua `PROJECT_ID` pelo ID real do projeto Google Cloud. A autenticação **ADC é diferente** da sessão comum de `gcloud auth login`.
+4. Verifique se o processo Python consegue inicializar o cliente Vision:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -c "from google.cloud import vision; vision.ImageAnnotatorClient(); print('Cliente Vision inicializado')"
+   ```
+
+   **A inicialização do cliente, isoladamente, não comprova** que a chamada de OCR, as permissões, a ativação da API e o faturamento estejam corretos. Faça um teste real com imagem autorizada pela função `src.image_text_extractor.extract_text_from_image()` e confira o texto extraído contra o comprovante.
+5. Configure alertas de orçamento no Google Cloud Billing e acompanhe o consumo. **Alertas de orçamento não impõem um teto de gastos.** Restrinja o acesso à conta do Windows e às credenciais ADC locais; nunca publique nem compartilhe tokens, arquivos de credenciais ou comprovantes financeiros.
+
+O projeto Google Cloud da cliente, faturamento, Vision API, ADC, projeto de cotas e uma chamada real de OCR foram configurados e validados na implantação de **26/10/2026**. A validação após novo login no Windows continua pendente.
+
+Referências oficiais: [autenticação do Vision](https://cloud.google.com/vision/docs/authentication) e [configuração local de ADC](https://cloud.google.com/docs/authentication/set-up-adc-local-dev).
 
 ## Modos de operação
 
@@ -258,7 +271,7 @@ A ativação de `SETTLEMENT_ENABLED=true` deve ocorrer somente após homologaç�
 
 Uma vez habilitado o modo de produção, os usuários autorizados enviam os comprovantes normalmente. Não é necessária aprovação manual para cada baixa elegível.
 
-**Validação real já realizada:** o fluxo de baixa automática foi exercitado com comprovantes reais e baixas confirmadas no ERP. Isso valida os cenários observados, mas não substitui a homologação no computador da cliente.
+**Validação real:** os testes históricos com comprovantes reais foram complementados pela implantação no computador da cliente em 26/10/2026. Comprovantes novos e repetidos se comportaram conforme esperado em modo seguro, e a primeira baixa em produção foi realizada pelo Telegram com autorização da responsável financeira. Isso constitui uma validação operacional inicial, não a comprovação de todos os cenários de exceção e recuperação.
 
 ## Operação pelo Telegram
 
@@ -594,7 +607,7 @@ Também foram validados localmente:
 - Inicialização automática após login no Windows.
 - Recebimento e resposta a um comprovante após a inicialização automática.
 
-A instalação no computador dedicado da cliente ainda está pendente.
+**Implantação na cliente (26/10/2026):** sistema instalado no computador da empresa; 198 testes automatizados aprovados nesse ambiente, autorização do Tiny e OCR do Google Cloud Vision verificados, atalho da área de trabalho funcionando e primeira baixa real autorizada realizada. A inicialização automática após novo login no Windows ainda precisa ser testada nesse computador. A operação inicial segue em acompanhamento.
 
 ## Estrutura do projeto
 
