@@ -6,7 +6,7 @@ Projeto em Python desenvolvido a partir de uma necessidade operacional real: con
 
 A solução integra extração de dados de comprovantes, regras determinísticas de conciliação, API do Tiny/Olist ERP e persistência local para reduzir conferências repetitivas e controlar o risco de processamento duplicado.
 
-> **Estado atual — 26/10/2026:** núcleo financeiro e integração Telegram implementados, com **198 testes automatizados aprovados no computador da cliente**. O programa foi instalado nesse computador, com OAuth do Tiny e OCR do Google Cloud Vision validados. Comprovantes novos e repetidos foram testados em modo seguro e, após autorização da responsável financeira, **a primeira baixa real foi realizada pelo Telegram**. O histórico anterior do SQLite foi preservado. O atalho da área de trabalho foi testado; a inicialização automática após login foi validada localmente, mas **ainda não foi testada no computador da cliente**. A operação inicial segue em acompanhamento.
+> **Estado atual — 26/10/2026:** núcleo financeiro e integração Telegram implementados, com **198 testes automatizados aprovados no computador da cliente**. O programa foi instalado nesse computador, com OAuth do Tiny e OCR do Google Cloud Vision validados. Comprovantes novos e repetidos foram testados em modo seguro e, após autorização da responsável financeira, **a primeira baixa real foi realizada pelo Telegram**. O histórico anterior do SQLite foi preservado. O atalho da área de trabalho foi testado, e a cliente confirmou posteriormente que a inicialização automática após login funciona no computador da empresa. **O escopo acordado do MVP está concluído e o sistema está em produção**, com acompanhamento operacional de rotina.
 
 ## Funcionalidades implementadas
 
@@ -218,7 +218,7 @@ O OCR de imagens utiliza o Google Cloud Vision e exige **Application Default Cre
    **A inicialização do cliente, isoladamente, não comprova** que a chamada de OCR, as permissões, a ativação da API e o faturamento estejam corretos. Faça um teste real com imagem autorizada pela função `src.image_text_extractor.extract_text_from_image()` e confira o texto extraído contra o comprovante.
 5. Configure alertas de orçamento no Google Cloud Billing e acompanhe o consumo. **Alertas de orçamento não impõem um teto de gastos.** Restrinja o acesso à conta do Windows e às credenciais ADC locais; nunca publique nem compartilhe tokens, arquivos de credenciais ou comprovantes financeiros.
 
-O projeto Google Cloud da cliente, faturamento, Vision API, ADC, projeto de cotas e uma chamada real de OCR foram configurados e validados na implantação de **26/10/2026**. A validação após novo login no Windows continua pendente.
+O projeto Google Cloud da cliente, faturamento, Vision API, ADC, projeto de cotas e uma chamada real de OCR foram configurados e validados na implantação de **26/10/2026**. A cliente confirmou posteriormente a inicialização automática após login no Windows. O OCR foi validado durante a implantação; não há relato de um novo teste específico de OCR após esse login.
 
 Referências oficiais: [autenticação do Vision](https://cloud.google.com/vision/docs/authentication) e [configuração local de ADC](https://cloud.google.com/docs/authentication/set-up-adc-local-dev).
 
@@ -517,7 +517,7 @@ Se o sistema retornar `verification_pending` ou houver suspeita de interrupção
 3. Conferir o registro local da transação e os logs com o responsável técnico.
 4. Resolver a pendência somente após determinar o estado financeiro real. Se houver dúvida, manter a operação bloqueada para conferência.
 
-A rotina definitiva de resolução de estados locais ainda deverá ser validada na homologação operacional da cliente.
+O procedimento de recuperação descrito acima permanece como referência para resultados financeiros excepcionais ou inconclusivos. Cenários específicos de recuperação ainda não observados devem ser validados quando ocorrerem; isso não impede o encerramento do MVP.
 
 ### Manutenção básica
 
@@ -593,7 +593,7 @@ Entretanto, **não é tecnicamente correto calcular uma taxa geral de automaçã
 
 A ausência de uma conta no ERP impede a baixa automática mesmo quando o comprovante foi interpretado corretamente.
 
-A validação funcional não substitui a conferência final das baixas no ERP nem a homologação no ambiente definitivo da cliente.
+Os testes funcionais históricos foram complementados por testes e uma baixa real autorizada no ambiente de produção da cliente. Baixas individuais e resultados excepcionais continuam exigindo conferência no Tiny quando aplicável.
 
 ### Testes operacionais no Windows
 
@@ -607,7 +607,7 @@ Também foram validados localmente:
 - Inicialização automática após login no Windows.
 - Recebimento e resposta a um comprovante após a inicialização automática.
 
-**Implantação na cliente (26/10/2026):** sistema instalado no computador da empresa; 198 testes automatizados aprovados nesse ambiente, autorização do Tiny e OCR do Google Cloud Vision verificados, atalho da área de trabalho funcionando e primeira baixa real autorizada realizada. A inicialização automática após novo login no Windows ainda precisa ser testada nesse computador. A operação inicial segue em acompanhamento.
+**Implantação na cliente (26/10/2026):** sistema instalado no computador da empresa; 198 testes automatizados aprovados nesse ambiente, autorização do Tiny e OCR do Google Cloud Vision verificados, atalho da área de trabalho funcionando e primeira baixa real autorizada realizada. A cliente confirmou posteriormente o funcionamento da inicialização automática após login no Windows. **O MVP foi entregue e está em produção**, com acompanhamento operacional e suporte para exceções.
 
 ## Estrutura do projeto
 
@@ -647,27 +647,15 @@ A estrutura apresenta os principais componentes, não uma listagem exaustiva. Ar
 
 O arquivo `bot.lock`, gerado durante a execução pelo controlador Windows, também é ignorado pelo Git.
 
-## Estado atual e próximos passos
+## Estado da entrega e manutenção do MVP
 
-O núcleo financeiro, a integração Telegram e a configuração explícita de habilitação de baixas estão implementados.
+**Status: MVP concluído e implantado em produção (26/10/2026).** O programa está instalado no computador da cliente, suas integrações e testes automatizados foram validados nesse ambiente, a responsável financeira autorizou as baixas reais e a primeira baixa foi realizada pelo Telegram. Posteriormente, a cliente confirmou a inicialização automática após login no Windows.
 
-A validação funcional com comprovantes reais e a preparação da inicialização no Windows foram realizadas.
+O escopo acordado do MVP foi entregue. A operação diária continua sujeita aos controles financeiros normais: conferir resultados inconclusivos no Tiny, resolver manualmente casos não elegíveis, preservar o histórico SQLite e manter acesso e cópias de segurança adequados. As responsabilidades por manutenção e backups devem permanecer claras; isso é cuidado operacional contínuo, não desenvolvimento pendente do MVP.
 
-A prioridade agora é concluir a entrega do MVP, com foco em:
+Fila persistente, Redis, Celery, múltiplas instâncias, monitoramento sofisticado, dashboards e novas integrações não são requisitos do MVP entregue. Melhorias futuras serão avaliadas se exceções recorrentes ou novas necessidades do negócio as justificarem.
 
-1. Instalar o programa no computador dedicado da cliente.
-2. Configurar o ambiente Python e as credenciais do Tiny/Olist ERP, Telegram e Google Cloud Vision.
-3. Confirmar a inicialização automática e o funcionamento após novo login no Windows.
-4. Conferir amostras das baixas realizadas diretamente no Tiny.
-5. Validar a orientação operacional para casos inconclusivos e revisão manual.
-6. Definir as responsabilidades por operação, atualização, credenciais e cópias de segurança.
-7. Obter a homologação operacional e o aceite final da cliente.
-
-Fila persistente, Redis, Celery, múltiplas instâncias, monitoramento sofisticado, dashboards e novas integrações não são requisitos desta entrega.
-
-Melhorias futuras serão avaliadas a partir de necessidades observadas na operação, priorizando confiabilidade, simplicidade e manutenção.
-
-A eventual publicação deste repositório como case profissional dependerá de revisão de confidencialidade e autorização apropriada. Esta documentação não constitui autorização para executar baixas financeiras em produção.
+A eventual publicação deste repositório como case profissional continua dependendo de revisão de confidencialidade e autorização apropriada. Esta documentação registra a autorização da cliente para a operação implantada; **não** constitui autorização genérica para habilitar baixas financeiras em outros ambientes.
 
 ---
 
