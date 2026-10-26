@@ -6,7 +6,7 @@ A Python project developed to address a real operational need: reviewing payment
 
 The solution combines receipt data extraction, deterministic reconciliation rules, Tiny/Olist ERP API integration, and local persistence to reduce repetitive manual checks and mitigate the risk of duplicate processing.
 
-> **Current status — October 21, 2026:** the financial reconciliation core and Telegram integration are implemented, with **198 automated tests passing**. The application has undergone functional validation using a batch of 62 real payment receipts, including settlements confirmed in Tiny. Automatic startup on Windows and single-instance protection have also been tested locally. **Installation and operational acceptance testing on the client's computer are still pending.**
+> **Current status — October 26, 2026:** the financial reconciliation core and Telegram integration are implemented, with **198 automated tests passing on the client's computer**. The application was installed on that computer, Tiny OAuth and Google Cloud Vision OCR were validated, and new and duplicate receipts were tested in safe mode. With the financial operator's authorization, **the first real settlement was completed through Telegram**. The previous SQLite history was preserved. The desktop launcher was tested; automatic startup after Windows login was validated locally but **has not yet been validated on the client's computer**. Initial production operation is being monitored.
 
 ## Implemented Features
 
@@ -197,17 +197,30 @@ The system attempts to refresh access automatically. If authorization is revoked
 
 ### Google Cloud Vision Configuration
 
-Authentication must be configured on the computer running the application.
+Image OCR uses Google Cloud Vision and requires **Application Default Credentials (ADC)** on the Windows account that runs the bot. PDFs with selectable native text do not require this service.
 
-Deployment to the client's environment requires:
+1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project managed by the responsible organization, link a billing account, and enable the **Cloud Vision API**.
+2. Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) on the computer running the application.
+3. In PowerShell, sign in for ADC and associate the quota/billing project:
 
-- Configuring Google Cloud Vision access in a project managed by the responsible organization.
-- Validating the credentials available to the Python process.
-- Confirming that OCR works after a new Windows login.
-- Monitoring API consumption and configuring budget alerts.
-- Restricting access to credentials and avoiding sharing them through messaging applications.
+   ```powershell
+   gcloud auth application-default login
+   gcloud auth application-default set-quota-project PROJECT_ID
+   ```
 
-Authentication has already been tested in the local development environment. **Final configuration on the client's computer has not yet been completed.**
+   Replace `PROJECT_ID` with the actual Google Cloud project ID. This is **ADC authentication**, which is separate from the regular `gcloud auth login` session.
+4. Verify that the Python process can initialize the Vision client:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -c "from google.cloud import vision; vision.ImageAnnotatorClient(); print('Vision client initialized')"
+   ```
+
+   **Client initialization alone does not confirm** that OCR requests, API enablement, permissions, and billing work. Test a real, authorized image using the project's `src.image_text_extractor.extract_text_from_image()` function and verify the extracted text against the receipt.
+5. Configure budget alerts in Google Cloud Billing and monitor actual usage. **Budget alerts are not a spending cap.** Restrict access to the Windows account and local ADC credentials; never commit or share tokens, credential files, or financial receipts.
+
+The client's Google Cloud project, billing, Vision API, ADC, quota project, and a real OCR request were configured and validated during deployment on **October 26, 2026**. A new-Windows-login validation remains pending.
+
+Official references: [Vision authentication](https://cloud.google.com/vision/docs/authentication) and [ADC for local development](https://cloud.google.com/docs/authentication/set-up-adc-local-dev).
 
 ## Operating Modes
 
@@ -258,7 +271,7 @@ Setting `SETTLEMENT_ENABLED=true` should occur only after acceptance testing and
 
 Once production mode is enabled, authorized users submit receipts normally. Individual manual approval is not required for each eligible settlement.
 
-**Real-world validation already performed:** the automatic settlement workflow was exercised using real receipts, with settlements confirmed in the ERP. This validates the observed scenarios but does not replace acceptance testing on the client's computer.
+**Real-world validation:** historical real-receipt testing was complemented by deployment on the client's computer on October 26, 2026. New and duplicate receipts behaved as expected in safe mode, and the first production settlement was completed through Telegram with the financial operator's authorization. This is initial operational validation, not proof that every exception or recovery scenario has been tested.
 
 ## Telegram Operation
 
@@ -596,7 +609,7 @@ The following were also validated locally:
 - Automatic startup after Windows login.
 - Receiving and responding to a receipt after automatic startup.
 
-Installation on the client's dedicated computer is still pending.
+**Client deployment (October 26, 2026):** installed on the company's computer; 198 automated tests passed there, Tiny authorization and Google Cloud Vision OCR were verified, the desktop launcher worked, and a first authorized real settlement was performed. Automatic startup after a fresh Windows login remains to be tested on that computer. Operation is currently monitored.
 
 ## Project Structure
 
