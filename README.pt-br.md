@@ -191,7 +191,7 @@ Para autorizar o acesso ao Tiny pela primeira vez ou reautorizar quando necessá
 
 O navegador será aberto para autorização. Os tokens retornados são armazenados localmente em `data/tiny_tokens.json`, ignorado pelo Git.
 
-O sistema tenta renovar o acesso automaticamente. Caso a autorização seja revogada ou a renovação falhe, será necessária nova autorização manual.
+O sistema renova automaticamente o token de acesso quando necessário. Falhas temporárias de conexão ou indisponibilidade do serviço de autenticação são identificadas separadamente e não exigem, por si só, uma nova autorização manual. Nesses casos, a operação é interrompida com segurança e uma nova tentativa pode ser realizada após o restabelecimento da conexão. A reautorização manual continua necessária quando não há credenciais válidas ou o Tiny rejeita a renovação.
 
 > **Segurança:** os tokens persistidos em arquivo não são criptografados pelo projeto. O acesso ao computador e à pasta de execução deve ser restrito. O arquivo `.env.example` contém somente valores fictícios; `.env` e `data/` estão ignorados pelo Git.
 
@@ -531,7 +531,9 @@ Se o bot parar de responder, verificar:
 
 Após resolver o problema, iniciar novamente pelo atalho do Windows.
 
-Se a autorização do Tiny estiver indisponível, executar novamente, na raiz do projeto:
+**Falha temporária na autenticação do Tiny:** verifique a conexão com a internet e tente processar novamente após sua normalização. Essa situação não exige reautorização imediata.
+
+**Autorização inválida ou indisponível:** quando o sistema solicitar explicitamente uma nova autorização, execute o procedimento abaixo a partir da raiz do projeto:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.authorize_tiny
@@ -566,7 +568,7 @@ A suíte automatizada utiliza `pytest`. Execute na raiz do repositório:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**198 testes passaram na validação local mais recente.**
+**202 testes passaram na validação local mais recente.**
 
 A suíte cobre componentes como extração de dados, parsing, matching, persistência, integração simulada com o Tiny, regras de elegibilidade, tratamento de estados financeiros, validação de anexos, autorização do Telegram, formatação de mensagens e configuração do modo de baixa.
 

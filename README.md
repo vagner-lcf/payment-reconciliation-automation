@@ -191,7 +191,7 @@ To authorize Tiny access for the first time or reauthorize it when necessary:
 
 A browser will open for authorization. The returned tokens are stored locally in `data/tiny_tokens.json`, which is ignored by Git.
 
-The system attempts to refresh access automatically. If authorization is revoked or token refresh fails, manual reauthorization will be required.
+The system automatically refreshes access tokens when needed. Temporary connection failures or authentication service unavailability are handled separately and do not, by themselves, require manual reauthorization. In these cases, processing stops safely and can be attempted again after connectivity is restored. Manual reauthorization remains necessary when valid credentials are unavailable or Tiny rejects token renewal.
 
 > **Security:** tokens stored in files are not encrypted by the project. Access to the computer and execution directory must be restricted. `.env.example` contains only placeholder values; `.env` and `data/` are ignored by Git.
 
@@ -533,7 +533,9 @@ If the bot stops responding, check:
 
 After resolving the problem, start the application again using the Windows shortcut.
 
-If Tiny authorization is unavailable, run the following command from the project root:
+**Temporary Tiny authentication failure:** check the internet connection and retry processing after connectivity is restored. Immediate manual reauthorization is not required.
+
+**Invalid or unavailable authorization:** when the application explicitly requests reauthorization, run the following command from the project root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.authorize_tiny
@@ -568,7 +570,7 @@ The automated test suite uses `pytest`. Run it from the repository root:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**198 tests passed during the most recent local validation.**
+**202 tests passed during the most recent local validation.**
 
 The suite covers components such as data extraction, parsing, matching, persistence, simulated Tiny integration, eligibility rules, financial state handling, attachment validation, Telegram authorization, message formatting, and settlement mode configuration.
 

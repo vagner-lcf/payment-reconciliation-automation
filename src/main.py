@@ -10,6 +10,8 @@ from src.token_manager import get_valid_access_token
 
 from src.logging_config import configure_logging
 
+from src.auth import TinyAuthTemporaryError
+
 from src.matching import (
     calculate_due_date_window,
     classify_matching_result,
@@ -386,7 +388,20 @@ def main(file_path: str, settlement_enabled: bool = False):
     # ---------------------------------------------------------
     # TINY API AUTHENTICATION
     # ---------------------------------------------------------
-    access_token = get_valid_access_token()
+    try:
+        access_token = get_valid_access_token()
+
+    except TinyAuthTemporaryError:
+        return finish(
+            status="error",
+            message=(
+                "A conexão com a autenticação do Tiny está "
+                "temporariamente indisponível. "
+                "Nenhuma baixa foi realizada nesta tentativa. "
+                "Tente novamente quando a conexão estiver normalizada."
+            ),
+            reason="tiny_auth_temporarily_unavailable",
+        )
 
     if access_token is None:
         return finish(

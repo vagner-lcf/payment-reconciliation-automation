@@ -666,3 +666,46 @@ def test_main_returns_verification_pending_when_settlement_fails():
     mock_settle.assert_called_once()
     mock_get_account.assert_not_called()
     mock_mark_processed.assert_not_called()
+
+
+def test_main_reports_temporary_tiny_auth_failure_without_settlement():
+    from src.auth import TinyAuthTemporaryError
+
+    receipt_data = {
+        "provider": "mercado_pago",
+        "provider_transaction_id": "TX_AUTH_TEST",
+        "pix_transaction_id": None,
+        "receipt_layout": "mp_pag_bol",
+        "amount_matches_barcode": True,
+        "beneficiary_document": "12345678901",
+        "amount": Decimal("150.00"),
+        "payment_date": date(2026, 10, 14),
+    }
+
+    with (
+        patch("src.main.engine"),
+        patch("src.main.create_tables"),
+        patch("src.main.extract_text_from_image", return_value="texto"),
+        patch("src.main.extract_receipt_data", return_value=receipt_data),
+        patch("src.main.extract_receipt_hash", return_value="hash_auth_test"),
+        patch("src.main.find_existing_transaction", return_value=None),
+        patch(
+            "src.main.get_valid_access_token",
+            side_effect=TinyAuthTemporaryError("Falha de rede"),
+        ),
+        patch("src.main.get_all_accounts_payable") as mock_accounts,
+        patch("src.main.insert_new_transaction") as mock_insert,
+        patch("src.main.settle_account_payable") as mock_settle,
+    ):
+        result = main(
+            file_path="comprovante_teste.jpeg",
+            settlement_enabled=True,
+        )
+
+    assert result["status"] == "error"
+    assert result["reason"] == "tiny_auth_temporarily_unavailable"
+    assert "temporariamente" in result["message"].lower()
+
+    mock_accounts.assert_not_called()
+    mock_insert.assert_not_called()
+    mock_settle.assert_not_called()
