@@ -6,7 +6,7 @@ A Python project developed to address a real operational need: reviewing payment
 
 The solution combines receipt data extraction, deterministic reconciliation rules, Tiny/Olist ERP API integration, and local persistence to reduce repetitive manual checks and mitigate the risk of duplicate processing.
 
-> **Current status — October 26, 2026:** the financial reconciliation core and Telegram integration are implemented, with **198 automated tests passing on the client's computer**. The application was installed on that computer, Tiny OAuth and Google Cloud Vision OCR were validated, and new and duplicate receipts were tested in safe mode. With the financial operator's authorization, **the first real settlement was completed through Telegram**. The previous SQLite history was preserved. The desktop launcher was tested, and the client subsequently confirmed that automatic startup after Windows login works on the company's computer. **The agreed MVP scope is complete and the system is in production**, with routine operational monitoring.
+> **Current status — October 28, 2026:** the MVP has been in production since October 26, 2026, when the first authorized financial settlement was completed through Telegram. On October 28, improvements to Tiny authentication failure handling and a user-operated reauthorization shortcut were deployed. **202 automated tests passed on the client's computer**, and the new authorization procedure was validated.
 
 ## Implemented Features
 
@@ -350,6 +350,19 @@ No settlement performed.
 Payment date: 13/10/2026
 ```
 
+**Tiny reauthorization required**
+
+```text
+⚠️ Tiny authorization needs to be renewed.
+On the computer, open the 'Autorizar Tiny'
+shortcut and complete the authorization in your browser.
+Then, resubmit the receipt.
+No settlement was performed.
+```
+
+Temporary connection failures are handled separately and do not require immediate reauthorization.
+
+
 The examples above are English translations for documentation purposes. **The application's actual Telegram messages remain in Brazilian Portuguese.**
 
 Messages are adapted to the data actually extracted. Missing fields are not populated with fabricated values.
@@ -411,9 +424,13 @@ The file is ignored by Git because it is a local runtime artifact.
 
 **Limitation:** this protection applies to instances started through the `run_bot.ps1` controller. Running the Python module directly does not use this lock and should be avoided while the bot is already active.
 
-### Desktop Shortcut
+### Desktop Shortcuts
 
-A Windows shortcut can point to:
+The client's computer has two desktop shortcuts for operation.
+
+**1. Main shortcut — Payment Reconciliation Automation**
+
+Points to:
 
 ```text
 scripts\windows\start_bot.bat
@@ -425,11 +442,23 @@ The project's custom icon is located at:
 assets\payment_reconciliation.ico
 ```
 
-The shortcut can be named **Payment Reconciliation Automation**.
-
-If the bot is already running, opening the shortcut displays the colored existing-instance warning without starting another instance through the controller.
+This shortcut starts the bot. If it is already running, an existing-instance warning is displayed without launching another instance.
 
 **The shortcut starts the application; it does not restart an already running process.**
+
+**2. Reauthorization shortcut — Autorizar Tiny**
+
+Points to:
+
+```text
+scripts\windows\authorize_tiny.bat
+```
+
+When Telegram requests Tiny reauthorization, the user opens the **Autorizar Tiny** shortcut, signs in if prompted, and completes authorization in the browser.
+
+After the message **"Autorização do Tiny concluída com sucesso."** appears, the user presses any key to close the authorization window and resubmits the receipt through Telegram.
+
+**The main bot remains running.** Reauthorization does not automatically reprocess the previous receipt.
 
 ### Automatic Startup
 
@@ -535,7 +564,7 @@ After resolving the problem, start the application again using the Windows short
 
 **Temporary Tiny authentication failure:** check the internet connection and retry processing after connectivity is restored. Immediate manual reauthorization is not required.
 
-**Invalid or unavailable authorization:** when the application explicitly requests reauthorization, run the following command from the project root:
+**Invalid or unavailable authorization:** when Telegram requests reauthorization, the user should open the **Autorizar Tiny** desktop shortcut and follow the instructions. For technical maintenance, the same procedure can be executed directly using the command below:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.authorize_tiny
@@ -570,7 +599,7 @@ The automated test suite uses `pytest`. Run it from the repository root:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**202 tests passed during the most recent local validation.**
+**202 automated tests passed on the client's computer on October 28, 2026***, after the Tiny authentication failure-handling update.
 
 The suite covers components such as data extraction, parsing, matching, persistence, simulated Tiny integration, eligibility rules, financial state handling, attachment validation, Telegram authorization, message formatting, and settlement mode configuration.
 
@@ -613,6 +642,8 @@ The following were also validated locally:
 
 **Client deployment (October 26, 2026):** installed on the company's computer; 198 automated tests passed there, Tiny authorization and Google Cloud Vision OCR were verified, the desktop launcher worked, and a first authorized real settlement was performed. The client subsequently confirmed successful automatic startup after Windows login. **The MVP is delivered and operating in production**, with routine monitoring and support for exceptional cases.
 
+**Operational update (October 28, 2026):** improvements to temporary authentication failure classification and Tiny reauthorization were deployed. The **Autorizar Tiny** shortcut was validated on the client's computer, including browser authorization while the bot remained running. All 202 automated tests passed in that environment.
+
 ## Project Structure
 
 ```text
@@ -622,7 +653,8 @@ payment-reconciliation-automation/
 ├── scripts/
 │   └── windows/
 │       ├── start_bot.bat             # Startup script with application header
-│       └── run_bot.ps1               # Instance control and execution
+│       |── run_bot.ps1               # Instance control and execution
+|       └── authorize_tiny.bat        # Tiny reauthorization
 ├── src/
 │   ├── main.py                       # Processing orchestration
 │   ├── telegram_bot.py               # Telegram operational interface

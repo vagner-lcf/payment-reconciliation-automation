@@ -62,6 +62,18 @@ def format_result_message(result: dict) -> str:
             "Nenhuma baixa realizada."
         )
 
+    if (
+        status == "error"
+        and result.get("reason") == "tiny_authorization_required"
+    ):
+        message = (
+            "⚠️ É necessário renovar a autorização do Tiny. "
+            "No computador, abra o atalho 'Autorizar Tiny' "
+            "e conclua a autorização no navegador. "
+            "Depois, envie novamente o comprovante. "
+            "Nenhuma baixa foi realizada."
+        )
+
     details = []
 
     transaction_id = result.get("transaction_id")

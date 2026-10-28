@@ -6,7 +6,7 @@ Projeto em Python desenvolvido a partir de uma necessidade operacional real: con
 
 A solução integra extração de dados de comprovantes, regras determinísticas de conciliação, API do Tiny/Olist ERP e persistência local para reduzir conferências repetitivas e controlar o risco de processamento duplicado.
 
-> **Estado atual — 26/10/2026:** núcleo financeiro e integração Telegram implementados, com **198 testes automatizados aprovados no computador da cliente**. O programa foi instalado nesse computador, com OAuth do Tiny e OCR do Google Cloud Vision validados. Comprovantes novos e repetidos foram testados em modo seguro e, após autorização da responsável financeira, **a primeira baixa real foi realizada pelo Telegram**. O histórico anterior do SQLite foi preservado. O atalho da área de trabalho foi testado, e a cliente confirmou posteriormente que a inicialização automática após login funciona no computador da empresa. **O escopo acordado do MVP está concluído e o sistema está em produção**, com acompanhamento operacional de rotina.
+> **Estado atual — 28/10/2026:** o MVP está concluído e em produção desde 26/10/2026, quando foi realizada a primeira baixa financeira real pelo Telegram, com autorização da responsável financeira. Em 28/10/2026, foram implantadas melhorias no tratamento de falhas de autenticação do Tiny e um atalho para reautorização pela própria usuária. **202 testes automatizados foram aprovados no computador da cliente**, e o novo procedimento de autorização foi validado.
 
 ## Funcionalidades implementadas
 
@@ -350,6 +350,21 @@ Nenhuma baixa realizada.
 Data do pagamento: 13/10/2026
 ```
 
+**Reautorização do Tiny necessária**
+
+
+**Reautorização do Tiny necessária**
+
+```text
+⚠️ É necessário renovar a autorização do Tiny.
+No computador, abra o atalho 'Autorizar Tiny'
+e conclua a autorização no navegador.
+Depois, envie novamente o comprovante.
+Nenhuma baixa foi realizada.
+```
+
+Essa mensagem é exibida quando o sistema identifica a necessidade de reautorização do Tiny. Falhas temporárias de conexão são tratadas separadamente e não exigem reautorização imediata.
+
 As mensagens são adaptadas aos dados efetivamente extraídos. Campos ausentes não são preenchidos artificialmente.
 
 A classificação específica de transferência Pix utiliza o motivo retornado pelo núcleo, sem confundir essa situação com outros casos de revisão manual.
@@ -409,9 +424,13 @@ Esse arquivo é ignorado pelo Git por representar um artefato local de execuçã
 
 **Limitação:** a proteção vale para as instâncias iniciadas pelo controlador `run_bot.ps1`. A execução direta do módulo Python não utiliza esse bloqueio e deve ser evitada quando o bot já estiver ativo.
 
-### Atalho na área de trabalho
+### Atalhos na área de trabalho
 
-É possível criar um atalho do Windows apontando para:
+O computador da cliente possui dois atalhos para operação.
+
+**1. Atalho principal- Payment Reconciliation Automation**
+
+Aponta para:
 
 ```text
 scripts\windows\start_bot.bat
@@ -423,11 +442,23 @@ O ícone personalizado do projeto fica em:
 assets\payment_reconciliation.ico
 ```
 
-O atalho pode receber o nome **Payment Reconciliation Automation**.
-
-Se o bot já estiver funcionando, abrir esse atalho exibirá o alerta colorido de instância existente, sem iniciar outra execução pelo controlador.
+Esse atalho inicia o bot. Se ele já estiver funcionando, será exibido um alerta de instância existente, sem iniciar outra execução.
 
 **O atalho inicia o programa; ele não reinicia um processo já ativo.**
+
+**2. Atalho de reautorização — Autorizar Tiny**
+
+Aponta para:
+
+```text
+scripts\windows\authorize_tiny.bat
+```
+
+Quando o Telegram solicitar uma nova autorização do Tiny, a usuária deverá abrir o atalho **Autorizar Tiny**, fazer login se solicitado e concluir a autorização no navegador.
+
+Após aparecer a mensagem **"Autorização do Tiny concluída com sucesso."**, basta pressionar uma tecla para fechar a janela de autorização e reenviar o comprovante pelo Telegram.
+
+**O bot principal permanece em execução.** A reautorização não processa automaticamente o comprovante anterior.
 
 ### Inicialização automática
 
@@ -533,7 +564,7 @@ Após resolver o problema, iniciar novamente pelo atalho do Windows.
 
 **Falha temporária na autenticação do Tiny:** verifique a conexão com a internet e tente processar novamente após sua normalização. Essa situação não exige reautorização imediata.
 
-**Autorização inválida ou indisponível:** quando o sistema solicitar explicitamente uma nova autorização, execute o procedimento abaixo a partir da raiz do projeto:
+**Autorização inválida ou indisponível:** quando o Telegram solicitar reautorização, a usuária deve abrir o atalho **Autorizar Tiny** na área de trabalho e seguir as instruções. Para manutenção técnica, o mesmo procedimento pode ser executado diretamente pelo comando abaixo:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.authorize_tiny
@@ -568,7 +599,7 @@ A suíte automatizada utiliza `pytest`. Execute na raiz do repositório:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**202 testes passaram na validação local mais recente.**
+**202 testes automatizados aprovados no computador da cliente em 28/10/2026**, após a atualização do tratamento de falhas na autenticação do Tiny.
 
 A suíte cobre componentes como extração de dados, parsing, matching, persistência, integração simulada com o Tiny, regras de elegibilidade, tratamento de estados financeiros, validação de anexos, autorização do Telegram, formatação de mensagens e configuração do modo de baixa.
 
@@ -611,6 +642,8 @@ Também foram validados localmente:
 
 **Implantação na cliente (26/10/2026):** sistema instalado no computador da empresa; 198 testes automatizados aprovados nesse ambiente, autorização do Tiny e OCR do Google Cloud Vision verificados, atalho da área de trabalho funcionando e primeira baixa real autorizada realizada. A cliente confirmou posteriormente o funcionamento da inicialização automática após login no Windows. **O MVP foi entregue e está em produção**, com acompanhamento operacional e suporte para exceções.
 
+**Atualização operacional (28/10/2026):** implantadas melhorias na classificação de falhas temporárias de autenticação e no procedimento de reautorização do Tiny. O atalho **Autorizar Tiny** foi testado no computador da cliente, incluindo autorização pelo navegador com o bot em execução. A suíte de 202 testes automatizados foi aprovada nesse ambiente.
+
 ## Estrutura do projeto
 
 ```text
@@ -621,6 +654,7 @@ payment-reconciliation-automation/
 │   └── windows/
 │       ├── start_bot.bat             # Inicializador com cabeçalho
 │       └── run_bot.ps1               # Controle de instância e execução
+|       └── authorize_tiny.bat        # Reautorização do Tiny
 ├── src/
 │   ├── main.py                       # Orquestração do processamento
 │   ├── telegram_bot.py               # Interface operacional Telegram
