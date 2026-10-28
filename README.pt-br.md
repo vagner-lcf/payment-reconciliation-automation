@@ -352,9 +352,6 @@ Data do pagamento: 13/10/2026
 
 **Reautorização do Tiny necessária**
 
-
-**Reautorização do Tiny necessária**
-
 ```text
 ⚠️ É necessário renovar a autorização do Tiny.
 No computador, abra o atalho 'Autorizar Tiny'

@@ -599,7 +599,7 @@ The automated test suite uses `pytest`. Run it from the repository root:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**202 automated tests passed on the client's computer on October 28, 2026***, after the Tiny authentication failure-handling update.
+**202 automated tests passed on the client's computer on October 28, 2026**, after the Tiny authentication failure-handling update.
 
 The suite covers components such as data extraction, parsing, matching, persistence, simulated Tiny integration, eligibility rules, financial state handling, attachment validation, Telegram authorization, message formatting, and settlement mode configuration.
 
